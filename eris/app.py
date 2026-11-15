@@ -25,8 +25,8 @@ from .core import Eris
 from .overlay import Overlay
 
 OVERLAY_CMDS = {"box", "move_box", "type_hint", "caption", "clear_box", "status", "monitor"}
-SUGGESTIONS = ["How do I add a Rigidbody?", "How do I make a new C# script?",
-               "Where do I change the camera background?"]
+SUGGESTIONS = ["How do I add a Rigidbody in Unity?", "Take me to Wikipedia",
+               "Pick yourself a profile picture"]
 
 
 class Avatar(tk.Canvas):
@@ -160,6 +160,8 @@ class App(ctk.CTk):
                     self.update_btn.configure(state="normal", text="Retry update")
                 elif name == "avatar":
                     self.avatar.load()
+                elif name == "clear_chat":
+                    self._clear_chat()
                 elif name == "active":
                     self.active_switch.select() if args[0] else self.active_switch.deselect()
         except queue.Empty:
@@ -217,8 +219,17 @@ class App(ctk.CTk):
         self.chat.bind("<Configure>", self._rewrap)
         self._welcome()
 
+        # status line (filled by _note)
+        self.note_row = ctk.CTkFrame(self, fg_color="transparent")
+        self.note_dot = ctk.CTkFrame(self.note_row, width=7, height=7, corner_radius=3,
+                                     fg_color=T.MUTED)
+        self.note_dot.pack(side="left", padx=(2, 8))
+        self.note_label = ctk.CTkLabel(self.note_row, text="", font=font(12), text_color=T.MUTED,
+                                       anchor="w")
+        self.note_label.pack(side="left", fill="x", expand=True)
+
         # step controls
-        ctl = ctk.CTkFrame(self, fg_color="transparent")
+        ctl = self.ctl_row = ctk.CTkFrame(self, fg_color="transparent")
         ctl.pack(fill="x", padx=15)
         for text, fn in (("Next step", lambda: self.eris.advance()),
                          ("Stop", lambda: self.eris.cancel()),
@@ -249,19 +260,77 @@ class App(ctk.CTk):
         self.mic.bind("<ButtonRelease-1>", lambda e: self.eris.stop_listening())
 
     def _welcome(self):
-        box = ctk.CTkFrame(self.chat, fg_color="transparent")
-        box.pack(fill="x", padx=8, pady=(14, 6))
-        ctk.CTkLabel(box, text="Hi, I'm Eris", font=font(20, "bold"),
-                     text_color=T.TEXT).pack(anchor="w")
+        """Greeting + a few ideas. Tucks itself away once you start talking."""
+        self.welcome = box = ctk.CTkFrame(self.chat, fg_color="transparent")
+        box.pack(fill="x", padx=10, pady=(16, 8))
+        head = ctk.CTkFrame(box, fg_color="transparent")
+        head.pack(fill="x")
+        try:
+            from .settings_ui import _avatar_image
+            pic = _avatar_image(46)
+            ctk.CTkLabel(head, text="", image=ctk.CTkImage(light_image=pic, dark_image=pic,
+                                                           size=(46, 46))).pack(side="left")
+        except Exception:
+            pass
+        words = ctk.CTkFrame(head, fg_color="transparent")
+        words.pack(side="left", padx=12, fill="x", expand=True)
+        name = config.USER_NAME.strip()
+        ctk.CTkLabel(words, text=f"Hi {name}, I'm Eris" if name else "Hi, I'm Eris",
+                     font=font(19, "bold"), text_color=T.TEXT, anchor="w").pack(fill="x")
         self.welcome_label = ctk.CTkLabel(
-            box, text="Ask me how to do something and I'll point at it on your screen, "
-                      "one step at a time.", font=font(13), text_color=T.MUTED,
-            wraplength=340, justify="left")
-        self.welcome_label.pack(anchor="w", pady=(2, 10))
-        for s in SUGGESTIONS:
-            ctk.CTkButton(box, text=s, height=30, corner_radius=15, anchor="w", font=font(12),
-                          fg_color=T.CARD_2, hover_color=T.ACCENT_DIM, text_color=T.TEXT,
-                          command=lambda s=s: self.eris.ask(s)).pack(anchor="w", pady=3)
+            words, text="Ask me how to do anything. I'll point at it on your screen, one step "
+                        "at a time.", font=font(13), text_color=T.MUTED, wraplength=300,
+            justify="left", anchor="w")
+        self.welcome_label.pack(fill="x")
+        ctk.CTkLabel(box, text="TRY ASKING", font=font(10, "bold"), text_color=T.ACCENT,
+                     anchor="w").pack(fill="x", pady=(16, 4))
+        for text in SUGGESTIONS:
+            self._suggestion(box, text)
+
+    def _suggestion(self, parent, text):
+        row = ctk.CTkFrame(parent, fg_color=T.CARD_2, corner_radius=12, height=38)
+        row.pack(fill="x", pady=3)
+        lbl = ctk.CTkLabel(row, text=text, font=font(13), text_color=T.TEXT, anchor="w")
+        lbl.pack(side="left", padx=14, pady=8, fill="x", expand=True)
+        arrow = ctk.CTkLabel(row, text="›", font=font(18, "bold"), text_color=T.MUTED, width=20)
+        arrow.pack(side="right", padx=10)
+
+        def hover(on):
+            row.configure(fg_color=T.ACCENT_DIM if on else T.CARD_2)
+            arrow.configure(text_color=T.TEXT if on else T.MUTED)
+        for w in (row, lbl, arrow):
+            w.bind("<Button-1>", lambda _e: self.eris.ask(text))
+            w.bind("<Enter>", lambda _e: hover(True))
+            w.bind("<Leave>", lambda _e: hover(False))
+            try:
+                w.configure(cursor="hand2")
+            except Exception:
+                pass
+
+    def _clear_chat(self):
+        """New task: empty the chat and show the welcome again."""
+        for w in self.chat.winfo_children():
+            w.destroy()
+        self.bubbles, self.last_eris = [], None
+        self._welcome()
+        self._scroll_end()
+        self._note("Fresh start. What are we doing?", hold=4)
+
+    # ---------- status line (system messages live here, not in the chat) ----------
+    def _note(self, text, hold=None):
+        """Show a short system message under the chat. hold: seconds before it fades
+        (None = stays until replaced, for things still in progress)."""
+        if getattr(self, "_note_job", None):
+            self.after_cancel(self._note_job)
+            self._note_job = None
+        self.note_label.configure(text=text)
+        self.note_dot.configure(fg_color=T.GOLD if hold is None and text else T.MUTED)
+        if text:
+            self.note_row.pack(fill="x", padx=22, pady=(0, 6), before=self.ctl_row)
+        if hold:
+            self._note_job = self.after(int(hold * 1000), lambda: self._note(""))
+        elif not text:
+            self.note_row.pack_forget()
 
     # ---------- chat bubbles ----------
     def _wrap(self):
@@ -272,7 +341,8 @@ class App(ctk.CTk):
         for b in self.bubbles:
             if b.winfo_exists():
                 b.configure(wraplength=w)
-        self.welcome_label.configure(wraplength=w + 40)
+        if getattr(self, "welcome", None) is not None and self.welcome.winfo_exists():
+            self.welcome_label.configure(wraplength=max(200, w - 40))
 
     def _scroll_end(self):
         def go():
@@ -300,6 +370,12 @@ class App(ctk.CTk):
             pass
         if who == "debug":
             return
+        if who == "info":   # system message: status line, not the chat
+            self._note(text, hold=None if text.rstrip().endswith("...") else 6)
+            return
+        if who == "you" and getattr(self, "welcome", None) is not None and self.welcome.winfo_exists():
+            self.welcome.destroy()
+            self.welcome = None
         if who == "eris" and self.last_eris is not None and self.last_eris.winfo_exists():
             self.last_eris.configure(text=self.last_eris.cget("text") + "\n" + text)
             self._scroll_end()

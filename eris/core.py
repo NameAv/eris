@@ -61,12 +61,10 @@ class Eris:
 
     def _load_ears(self):
         try:
-            self.ui.log("info", f"Loading speech model ({config.WHISPER_MODEL})... "
-                        "first time downloads it, give it a minute.")
+            self.ui.log("info", "Getting my ears ready (the first time takes a minute)...")
             from .ears import Ears
             self.ears = Ears()
-            self.ui.log("info", f"Ready! Hold {config.TALK_KEY.upper()} (or the mic button) "
-                        "and ask me how to do something.")
+            self.ui.log("info", f"Ready. Hold {config.TALK_KEY.upper()} or the button below to talk.")
             self.ui.cmd("state", "ready")
         except Exception as e:
             self.ui.log("error", f"Microphone/speech model not available: {e}\n"
@@ -95,7 +93,7 @@ class Eris:
     def new_task(self):
         self.cancel()
         self.brain.reset()
-        self.ui.log("info", "Fresh start. What are we doing?")
+        self.ui.cmd("clear_chat")
 
     def set_active(self, on):
         self.active = on
@@ -319,7 +317,7 @@ class Eris:
             self.watcher.rebase()
             if self.waiting == "next" and not soft and not self.told_watch:
                 self.told_watch = True
-                self.ui.log("hint", "I'm watching your screen and will notice when you're done "
+                self.ui.log("info", "I'm watching your screen and will notice when you're done "
                                     f"(or press {config.NEXT_KEY.upper()}).")
 
     def _take_shot(self, allow_pre=False):

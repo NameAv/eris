@@ -10,5 +10,6 @@ huggingface-hub>=0.21
 tokenizers>=0.13
 av>=11
 tqdm
+edge-tts
 pywin32; sys_platform == "win32"
 pyttsx3; sys_platform != "win32"

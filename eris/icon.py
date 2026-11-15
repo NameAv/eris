@@ -10,7 +10,7 @@ def make():
     s = 256
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.ellipse((8, 8, s - 8, s - 8), fill=(24, 22, 30, 255), outline=(255, 42, 42, 255), width=18)
+    d.ellipse((8, 8, s - 8, s - 8), fill=(22, 9, 12, 255), outline=(227, 38, 63, 255), width=18)
     font = None
     for name in ("segoeuib.ttf", "arialbd.ttf", "DejaVuSans-Bold.ttf"):
         try:

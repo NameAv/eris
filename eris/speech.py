@@ -1,60 +1,144 @@
-"""Eris's voice. Speaks one sentence at a time and can be cut off instantly."""
+"""Eris's voice.
+
+"natural": Microsoft's free neural voices (the ones Edge's Read Aloud uses), via
+edge-tts. No key needed, but needs internet. The next sentence is generated
+while the current one plays, so there are no gaps.
+"windows": the built-in Windows voice. Offline, instant, but robotic.
+If natural fails (offline etc.) Eris falls back to the Windows voice by herself.
+"""
+import asyncio
+import os
 import queue
 import sys
+import tempfile
 import threading
+import time
 
 from . import config
 
+VOICES = {  # label in settings -> edge-tts voice name
+    "Ava (US, warm)": "en-US-AvaNeural",
+    "Emma (US, bright)": "en-US-EmmaNeural",
+    "Jenny (US, friendly)": "en-US-JennyNeural",
+    "Aria (US, confident)": "en-US-AriaNeural",
+    "Sonia (UK)": "en-GB-SoniaNeural",
+    "Libby (UK, soft)": "en-GB-LibbyNeural",
+    "Natasha (Australia)": "en-AU-NatashaNeural",
+}
+PREVIEW = "Hi, I'm Eris. Hold F8 and ask me anything, and I'll show you where to click."
+
 
 class Voice:
-    def __init__(self):
-        self.q = queue.Queue()
-        threading.Thread(target=self._run, daemon=True).start()
+    def __init__(self, log=None):
+        self.log = log or (lambda *a: None)
+        self.gen = 0
+        self.text_q = queue.Queue()
+        self.audio_q = queue.Queue()
+        self.sapi_q = queue.Queue()
+        self.tmp = tempfile.mkdtemp(prefix="eris-voice-")
+        self.warned = False
+        threading.Thread(target=self._synth_loop, daemon=True).start()
+        threading.Thread(target=self._play_loop, daemon=True).start()
+        threading.Thread(target=self._sapi_loop, daemon=True).start()
 
-    def say(self, text: str):
-        if not config.VOICE_ON:
+    # ---------- public ----------
+    def say(self, text: str, force=False):
+        if not (config.VOICE_ON or force):
             return
-        self.q.put(("say", text))
+        if config.VOICE_ENGINE == "natural" and sys.platform == "win32":
+            self.text_q.put((self.gen, text))
+        else:
+            self.sapi_q.put(("say", text))
 
     def stop(self):
-        # Drop anything not yet spoken, then cut off the current sentence.
-        try:
+        self.gen += 1
+        for q in (self.text_q, self.audio_q, self.sapi_q):
+            try:
+                while True:
+                    q.get_nowait()
+            except queue.Empty:
+                pass
+        self.sapi_q.put(("stop", None))
+
+    # ---------- natural voice ----------
+    def _synth_loop(self):
+        loop = asyncio.new_event_loop()
+        n = 0
+        while True:
+            g, text = self.text_q.get()
+            if g != self.gen:
+                continue
+            n += 1
+            path = os.path.join(self.tmp, f"s{n % 50}.mp3")
+            try:
+                import edge_tts
+                rate = f"{int(config.VOICE_RATE) * 6:+d}%"
+                comm = edge_tts.Communicate(text, config.VOICE_NAME, rate=rate)
+                loop.run_until_complete(asyncio.wait_for(comm.save(path), 8))
+                self.audio_q.put((g, path))
+            except Exception as e:
+                if not self.warned:
+                    self.warned = True
+                    self.log("hint", f"Natural voice unavailable ({e.__class__.__name__}), "
+                                     "using the Windows voice. Needs internet.")
+                if g == self.gen:
+                    self.sapi_q.put(("say", text))
+
+    def _play_loop(self):
+        if sys.platform != "win32":
+            return
+        import ctypes
+        mci = ctypes.windll.winmm.mciSendStringW
+        buf = ctypes.create_unicode_buffer(64)
+        while True:
+            g, path = self.audio_q.get()
+            if g != self.gen:
+                continue
+            mci(f'open "{path}" type mpegvideo alias eris', None, 0, None)
+            mci("play eris", None, 0, None)
+            time.sleep(0.05)
             while True:
-                self.q.get_nowait()
-        except queue.Empty:
-            pass
-        self.q.put(("stop", None))
+                if g != self.gen:
+                    mci("stop eris", None, 0, None)
+                    break
+                mci("status eris mode", buf, 64, None)
+                if buf.value != "playing":
+                    break
+                time.sleep(0.03)
+            mci("close eris", None, 0, None)
 
-    def _run(self):
-        if sys.platform == "win32":
-            self._run_sapi()
-        else:
-            self._run_pyttsx3()
-
-    def _run_sapi(self):
-        # Windows built-in voice. Async + purge means no lag and instant stop.
+    # ---------- Windows voice ----------
+    def _sapi_loop(self):
+        if sys.platform != "win32":
+            try:
+                import pyttsx3
+                engine = pyttsx3.init()
+            except Exception:
+                return
+            while True:
+                cmd, text = self.sapi_q.get()
+                if cmd == "say":
+                    engine.say(text)
+                    engine.runAndWait()
         import pythoncom
         import win32com.client
         pythoncom.CoInitialize()
         voice = win32com.client.Dispatch("SAPI.SpVoice")
-        voice.Rate = config.VOICE_RATE
+        try:  # prefer a female voice if one is installed (e.g. Zira)
+            for v in voice.GetVoices():
+                if "zira" in v.GetDescription().lower():
+                    voice.Voice = v
+                    break
+        except Exception:
+            pass
         ASYNC, PURGE = 1, 2
         while True:
-            cmd, text = self.q.get()
+            cmd, text = self.sapi_q.get()
             if cmd == "stop":
                 voice.Speak("", ASYNC | PURGE)
             else:
                 voice.Rate = int(config.VOICE_RATE)
-                voice.Speak(text, ASYNC)  # queues behind the current sentence
-
-    def _run_pyttsx3(self):
-        import pyttsx3
-        engine = pyttsx3.init()
-        while True:
-            cmd, text = self.q.get()
-            if cmd == "say":
-                engine.say(text)
-                engine.runAndWait()
+                voice.Speak(text, ASYNC)
 
 
 def beep(kind="start"):
@@ -63,4 +147,4 @@ def beep(kind="start"):
         return
     import winsound
     freq = {"start": 880, "stop": 660, "done": 990}.get(kind, 800)
-    threading.Thread(target=winsound.Beep, args=(freq, 70), daemon=True).start()
+    threading.Thread(target=winsound.Beep, args=(freq, 60), daemon=True).start()

@@ -1,4 +1,12 @@
-"""Talks to Claude. Streams the reply so the box and voice start early."""
+"""The thinking part. Streams the reply so the box and voice start early.
+
+Three brains: Claude Opus (best), Claude Haiku (very cheap), or a free local
+vision model running on your own PC through Ollama.
+"""
+import json
+import urllib.error
+import urllib.request
+
 import anthropic
 
 from . import config, settings
@@ -57,58 +65,129 @@ class Brain:
     def reset(self):
         self.history = []
 
+    @staticmethod
+    def snap():
+        """Local Qwen-VL models want image sides that are multiples of 28."""
+        return 28 if config.BRAIN == "local" else 1
+
     def turn(self, shot, text, on_event, alive):
         """Stream one step. Calls on_event(Event) as lines arrive. alive() -> False aborts."""
+        user_text = f"{text}\n\n(Screenshot is {shot.img_w}x{shot.img_h} pixels.)"
+        lines = LineStream()
+
+        def feed(chunk):
+            for ev in lines.feed(chunk):
+                on_event(ev)
+
+        if config.BRAIN == "local":
+            reply = self._local(shot, user_text, feed, alive, on_event)
+        else:
+            reply = self._claude(shot, user_text, feed, alive, on_event)
+        if reply is None:
+            return
+        for ev in lines.flush():
+            on_event(ev)
+        self.history += [
+            {"role": "user", "content": f"[screenshot] {text}"},
+            {"role": "assistant", "content": reply.strip() or "NOBOX\nDONE"},
+        ]
+        self.history = self.history[-KEEP_MESSAGES:]
+
+    def _fail(self, on_event, msg):
+        on_event(Event("say", msg))
+        on_event(Event("done"))
+
+    # ---------- Claude (paid, best) ----------
+    def _claude(self, shot, user_text, feed, alive, on_event):
         client = self._get_client()
         if not client:
-            on_event(Event("say", "I need an API key first. Open Settings and paste it in."))
-            on_event(Event("done"))
-            return
-        user_text = f"{text}\n\n(Screenshot is {shot.img_w}x{shot.img_h} pixels.)"
+            self._fail(on_event, "I need an API key for that brain. Open Settings, or switch to the free one.")
+            return None
         messages = self.history + [{"role": "user", "content": [
             {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
                                          "data": shot.b64}},
             {"type": "text", "text": user_text},
         ]}]
-        extra = {"speed": "fast"} if config.FAST_MODE else {}
-        lines = LineStream()
+        common = dict(max_tokens=config.MAX_TOKENS, system=SYSTEM, messages=messages,
+                      output_config={"effort": config.EFFORT})
         reply = []
         try:
-            with client.beta.messages.stream(
-                model=config.MODEL,
-                max_tokens=config.MAX_TOKENS,
-                system=SYSTEM,
-                messages=messages,
-                output_config={"effort": config.EFFORT},
-                betas=["server-side-fallback-2026-07-01"],
-                fallbacks="default",
-                **extra,
-            ) as stream:
+            if config.BRAIN == "claude-cheap":
+                cm = client.messages.stream(model=config.CHEAP_MODEL, **common)
+            else:
+                extra = {"speed": "fast"} if config.FAST_MODE else {}
+                cm = client.beta.messages.stream(
+                    model=config.MODEL, betas=["server-side-fallback-2026-07-01"],
+                    fallbacks="default", **common, **extra)
+            with cm as stream:
                 for chunk in stream.text_stream:
                     if not alive():
-                        return  # user moved on; drop this reply
+                        return None  # user moved on; drop this reply
                     reply.append(chunk)
-                    for ev in lines.feed(chunk):
-                        on_event(ev)
+                    feed(chunk)
                 final = stream.get_final_message()
-            for ev in lines.flush():
-                on_event(ev)
             if final.stop_reason == "refusal":
-                on_event(Event("say", "Sorry, I can't help with that one."))
-                on_event(Event("done"))
-                return
+                self._fail(on_event, "Sorry, I can't help with that one.")
+                return None
         except anthropic.AuthenticationError:
-            on_event(Event("say", "My API key isn't working. Check it in Settings."))
-            on_event(Event("done"))
-            return
+            self._fail(on_event, "My API key isn't working. Check it in Settings.")
+            return None
         except (anthropic.APIConnectionError, anthropic.RateLimitError, anthropic.APIStatusError) as e:
             self.log("error", f"API error: {e}")
-            on_event(Event("say", "I couldn't reach my brain just now. Try again."))
-            on_event(Event("done"))
-            return
+            self._fail(on_event, "I couldn't reach my brain just now. Try again.")
+            return None
+        return "".join(reply)
 
-        self.history += [
-            {"role": "user", "content": f"[screenshot] {text}"},
-            {"role": "assistant", "content": "".join(reply).strip() or "NOBOX\nDONE"},
-        ]
-        self.history = self.history[-KEEP_MESSAGES:]
+    # ---------- Local (free, runs on your PC through Ollama) ----------
+    def _local(self, shot, user_text, feed, alive, on_event):
+        messages = [{"role": "system", "content": SYSTEM}] + self.history + [{
+            "role": "user",
+            "content": user_text + "\nAnswer ONLY with BOX/NOBOX, SAY and WAIT/DONE lines.",
+            "images": [shot.b64],
+        }]
+        body = json.dumps({"model": config.LOCAL_MODEL, "messages": messages, "stream": True,
+                           "keep_alive": "30m", "options": {"temperature": 0.2}}).encode()
+        req = urllib.request.Request(config.OLLAMA_URL.rstrip("/") + "/api/chat", data=body,
+                                     headers={"Content-Type": "application/json"})
+        reply = []
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                for raw in r:
+                    if not alive():
+                        return None
+                    obj = json.loads(raw)
+                    if obj.get("error"):
+                        raise RuntimeError(obj["error"])
+                    chunk = obj.get("message", {}).get("content", "")
+                    if chunk:
+                        reply.append(chunk)
+                        feed(chunk)
+                    if obj.get("done"):
+                        break
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode(errors="ignore")[:300]
+            self.log("error", f"Local brain error: {detail}")
+            if "not found" in detail:
+                self._fail(on_event, f"I don't have the {config.LOCAL_MODEL} model yet. "
+                                     "Check Settings for how to get it.")
+            else:
+                self._fail(on_event, "My local brain had a problem. Check the log.")
+            return None
+        except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
+            self.log("error", f"Can't reach Ollama at {config.OLLAMA_URL}: {e}")
+            self._fail(on_event, "I can't find my local brain. Is Ollama running?")
+            return None
+        except Exception as e:
+            self.log("error", f"Local brain error: {e}")
+            self._fail(on_event, "My local brain had a problem. Check the log.")
+            return None
+        return "".join(reply)
+
+
+def local_models():
+    """Names of models installed in Ollama, or None if Ollama isn't running."""
+    try:
+        with urllib.request.urlopen(config.OLLAMA_URL.rstrip("/") + "/api/tags", timeout=3) as r:
+            return [m["name"] for m in json.loads(r.read()).get("models", [])]
+    except Exception:
+        return None

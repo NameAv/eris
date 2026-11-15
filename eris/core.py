@@ -19,7 +19,7 @@ NEXT_STEP_PROMPT = ("I did that step. Here's my screen now. Check it worked, the
 class Eris:
     def __init__(self, ui):
         self.ui = ui
-        self.voice = Voice()
+        self.voice = Voice(log=ui.log)
         self.brain = Brain(log=ui.log)
         self.ears = None
         self.active = True
@@ -128,7 +128,7 @@ class Eris:
         alive = lambda: my == self.gen
         self.ui.cmd("status", "Looking...")
         self.ui.cmd("state", "thinking")
-        shot = screen.grab()
+        shot = screen.grab(snap=self.brain.snap())
         if not alive():
             return
         self.ui.cmd("monitor", shot.left, shot.top, shot.width, shot.height)

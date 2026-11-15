@@ -19,8 +19,20 @@ After that, just open **Eris** from the Desktop. No command window.
 - **Next step / F9** is for steps that aren't a click (typing, dragging).
 - **Stop / F10** clears everything. **New task** makes her forget the last task.
 - **Active** switch: turn it off and Eris ignores the hotkeys.
-- **Settings**: API key, speed vs. carefulness, voice on/off and speed, speech accuracy,
-  hotkeys, box timeout, keep-on-top, and a *Test the red box* button.
+- **Settings**: brain, voice, hotkeys, box timeout, keep-on-top, and a *Test the red box* button.
+
+## Brains (Settings, then Brain)
+
+| Option | Cost | Notes |
+|--------|------|-------|
+| **Best** (Claude Opus) | about 2 cents a step | Smartest, most accurate boxes. Needs an API key. |
+| **Cheap** (Claude Haiku) | about 40x less | $5 lasts thousands of steps. Needs an API key. |
+| **Free** (local, Ollama) | free | Runs on your PC. Install [Ollama](https://ollama.com/download), run `ollama pull qwen2.5vl:7b`, click Test. Needs a graphics card with about 8 GB of memory; less smart than Claude. |
+
+## Voice
+
+*Natural* uses Microsoft's free neural voices (Ava, Emma, Sonia...), so it needs internet.
+If it can't connect, Eris switches to the built-in Windows voice by herself. Use *Preview* to pick one.
 
 ## How it stays fast and doesn't get stuck
 
@@ -40,11 +52,12 @@ After that, just open **Eris** from the Desktop. No command window.
 ## Files
 
 - `eris/app.py`: the window and settings
+- `eris/theme.py`: colours
 - `eris/core.py`: hotkeys and step flow
 - `eris/settings.py`: saves your settings to %APPDATA%\Eris
-- `eris/brain.py`: Claude prompt and streaming
+- `eris/brain.py`: the prompt, plus the Claude and local (Ollama) brains
 - `eris/protocol.py`: parses `BOX / SAY / WAIT / DONE` lines as they stream in
-- `eris/overlay.py`: transparent click-through red box window
+- `eris/overlay.py`: the red box (four solid bars plus a caption)
 - `eris/ears.py`: push-to-talk and speech-to-text
-- `eris/speech.py`: Windows voice (interruptible)
+- `eris/speech.py`: natural and Windows voices (interruptible)
 - `eris/screen.py`: screenshots and coordinate mapping

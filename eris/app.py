@@ -263,12 +263,13 @@ class App(ctk.CTk):
                       command=self._send).pack(side="right", padx=4, pady=3)
 
         # big talk button
-        self.mic = ctk.CTkButton(self, text="", height=52, corner_radius=26,
+        # Start with real text: CustomTkinter only creates the text label once there's text,
+        # and clicks on the words land on that label, so it must exist before we bind.
+        self.mic = ctk.CTkButton(self, text="Click to call", height=52, corner_radius=26,
                                  fg_color=T.ACCENT, hover_color=T.ACCENT_HOVER,
                                  font=font(15, "bold"), text_color="#ffffff")
         self.mic.pack(fill="x", padx=18, pady=(0, 18))
-        self.mic.bind("<ButtonPress-1>", self._mic_down)
-        self.mic.bind("<ButtonRelease-1>", self._mic_up)
+        self._bind_mic()
         self.on_call = False
 
     def _welcome(self):
@@ -419,22 +420,46 @@ class App(ctk.CTk):
     # ---------- talk button: hold = push-to-talk, click = call on/off ----------
     CLICK = 0.25   # pressed for less than this = a click
 
-    def _mic_down(self, _e=None):
-        self._down_at = time.time()
-        self._held = self.eris.begin_hold()
-        if not self._held and not self.eris.ears:
-            self._note("My ears are still loading. Give me a moment.", hold=4)
-        self._hold_job = self.after(int(self.CLICK * 1000), self.eris.confirm_hold) if self._held else None
+    def _bind_mic(self):
+        """Bind press/release on the button AND everything inside it (its text label,
+        its canvas), so a click anywhere on it counts."""
+        widgets = [self.mic] + list(self.mic.winfo_children())
+        for w in widgets:
+            if getattr(w, "_eris_bound", False):
+                continue
+            for seq, fn in (("<ButtonPress-1>", self._mic_down), ("<ButtonRelease-1>", self._mic_up)):
+                w.bind(seq, fn, add="+")
+            w._eris_bound = True
 
-    def _mic_up(self, _e=None):
+    @staticmethod
+    def _stamp(e):
+        """When the mouse event really happened (ms). Uses the event's own timestamp so a
+        busy moment in the app can't make a quick click look like a long hold."""
+        t = getattr(e, "time", None)
+        return t if isinstance(t, int) and t > 0 else int(time.time() * 1000)
+
+    def _mic_down(self, e=None):
+        if getattr(self, "_pressed", False):   # the button and its label both report it
+            return
+        self._pressed = True
+        self._down_ms = self._stamp(e)
+        if not self.eris.ears:
+            self._note("My ears are still loading. Give me a moment.", hold=4)
+        self.eris.press()                       # starts the mic on a helper thread
+        self._hold_job = self.after(int(self.CLICK * 1000), self.eris.confirm_hold)
+
+    def _mic_up(self, e=None):
+        if not getattr(self, "_pressed", False):
+            return
+        self._pressed = False
         if getattr(self, "_hold_job", None):
             self.after_cancel(self._hold_job)
             self._hold_job = None
-        if time.time() - getattr(self, "_down_at", 0) < self.CLICK:
-            self.eris.abort_listening()
-            self.eris.toggle_call()
+        held = (self._stamp(e) - self._down_ms) / 1000
+        if held < self.CLICK:
+            self.eris.release_click()           # a click: call on/off
         else:
-            self.eris.stop_listening()
+            self.eris.release_hold()            # a hold: push-to-talk
 
     def _set_call(self, on):
         self.on_call = on
@@ -467,11 +492,12 @@ class App(ctk.CTk):
                                fg_color=T.GLOW)
         elif on_call:
             self.mic.configure(text="On a call with Eris  ·  click to hang up", fg_color=T.ACCENT)
-            if state in ("ready", "guiding"):
-                self.chip_text.configure(text="On call" if state == "ready" else label)
+            if state == "ready":
+                self.chip_text.configure(text="On call")
         else:
             self.mic.configure(text=f"Click to call  ·  hold to talk ({config.TALK_KEY.upper()})",
                                fg_color=T.ACCENT)
+        self._bind_mic()   # in case the button made new inner widgets
         brain = {"claude": "Opus brain", "claude-cheap": "Haiku brain",
                  "local": "free local brain"}.get(config.BRAIN, "")
         self.subtitle.configure(text=f"screen guide · {brain}")

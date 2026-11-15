@@ -48,6 +48,8 @@ class Eris:
         self.early_click = None  # gen of a box you clicked before she finished talking
         self.box_gen = None
         self.hotkeys_paused = False   # while you're choosing a new key in Settings
+        self._press_token = None
+        self._want_hold = False
         self.call = None              # call mode: always listening (see ears.Call)
         self.pre_shot = None     # (token, time, Shot) taken when you let go of the talk key
         self.pre_token = None
@@ -436,6 +438,29 @@ class Eris:
             self.ui.log("error", f"Couldn't open the microphone: {e}")
             self.ui.cmd("status", "")
 
+    # The talk button. Opening the microphone can take a moment on Windows, so it happens
+    # on a helper thread; a token makes sure a quick click never leaves it recording.
+    def press(self):
+        self._want_hold = False
+        self._press_token = token = object()
+        threading.Thread(target=self._press_work, args=(token,), daemon=True).start()
+
+    def _press_work(self, token):
+        if self.begin_hold():
+            if self._press_token is not token:
+                self.abort_listening()          # you already let go (it was a click)
+            elif self._want_hold:
+                self.confirm_hold()             # the mic was slow to open; you're holding
+
+    def release_click(self):
+        self._press_token = None
+        self.abort_listening()
+        threading.Thread(target=self.toggle_call, daemon=True).start()
+
+    def release_hold(self):
+        self._press_token = None
+        self.stop_listening()
+
     def begin_hold(self):
         """Talk button pressed: start recording straight away (so your first word isn't
         cut off) but don't interrupt anything yet; it might just be a click."""
@@ -451,8 +476,10 @@ class Eris:
 
     def confirm_hold(self):
         """Still held after a moment: it's push-to-talk."""
-        if not self.talking:
+        self._want_hold = True
+        if not self.talking or getattr(self, "_hold_shown", None) is self._press_token:
             return
+        self._hold_shown = self._press_token
         self._new_gen()
         self.voice.stop()
         self._clear()

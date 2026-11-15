@@ -1,3 +1,4 @@
+v1.9.1: Clicking the big button now really starts a call (clicks on the words were being missed).
 v1.9.0: Call mode. Click the big button to stay on a call with Eris and just talk; hold it for push-to-talk. Also fixes a rare random crash.
 v1.8.1: Cleaner chat. Status messages moved to a slim line under the chat, a tidier welcome with fresh suggestions, and New task clears the chat.
 v1.8.0: Safety upgrade. Fingerprint-checked installs, hardened updates, your API key is now encrypted, and Eris spots scams and ignores sneaky instructions on web pages.

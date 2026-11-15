@@ -36,7 +36,7 @@ VOICE_RATE = 1          # Windows voice speed: -10 (slow) .. 10 (fast)
 PANEL_ON_TOP = False    # keep the Eris window above other windows
 
 # --- Updates (GitHub "owner/repo"; the app checks it on startup) ---
-UPDATE_REPO = ""
+UPDATE_REPO = "nameAv/eris"
 UPDATE_BRANCH = "main"
 
 MAX_STEPS = 20          # safety limit per task

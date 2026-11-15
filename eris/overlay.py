@@ -91,10 +91,19 @@ class Overlay:
         self.pill_shown = False
         self.box_timer = None
         self.flash_jobs = []
+        self.glow = None
+        if sys.platform == "win32" and config.BOX_STYLE == "glow":
+            try:
+                from .glowbox import GlowBox
+                self.glow = GlowBox(master)
+            except Exception:
+                self.glow = None   # plain bars instead
         master.after(1500, self._keep_on_top)
 
     def _keep_on_top(self):
-        visible = list(self.bars) if self.rect else []
+        if self.glow and self.rect:
+            _raise(self.glow.win, [self.glow.hwnd])
+        visible = list(self.bars) if self.rect and not self.glow else []
         if self.rect and self.hint:
             visible.append(self.cap)
         if self.pill_shown:
@@ -127,12 +136,16 @@ class Overlay:
         """Screen coords. Replaces any existing box (and its type hint)."""
         self.clear_box()
         self.rect = (int(x1), int(y1), int(x2), int(y2))
-        self._draw_bars()
-        for p in self.bars:
-            _raise(p, self.handles.get(p))
-        self._flash()
-        if caption:
-            self.type_hint(caption, prefix="")
+        if self.glow:
+            self.glow.show(self.rect, caption)
+            _raise(self.glow.win, [self.glow.hwnd])
+        else:
+            self._draw_bars()
+            for p in self.bars:
+                _raise(p, self.handles.get(p))
+            self._flash()
+            if caption:
+                self.type_hint(caption, prefix="")
         self.box_timer = self.master.after(int(config.BOX_TIMEOUT * 1000), self.clear_box)
 
     def move_box(self, x1, y1, x2, y2):
@@ -140,6 +153,9 @@ class Overlay:
         if not self.rect:
             return
         self.rect = (int(x1), int(y1), int(x2), int(y2))
+        if self.glow:
+            self.glow.move(self.rect)
+            return
         self._draw_bars()
         if self.hint:
             self._place_hint()
@@ -161,6 +177,9 @@ class Overlay:
             return
         text = text if len(text) < 60 else text[:57] + "..."
         self.hint = prefix + text
+        if self.glow:
+            self.glow.set_hint(self.hint)
+            return
         self.cap_label.configure(text=self.hint)
         self._place_hint()
         _raise(self.cap, self.handles.get(self.cap))
@@ -187,6 +206,8 @@ class Overlay:
         self.flash_jobs = []
         self.rect = None
         self.hint = ""
+        if self.glow:
+            self.glow.hide()
         for p in self.bars + [self.cap]:
             self._park(p)
 

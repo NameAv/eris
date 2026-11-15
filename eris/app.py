@@ -144,6 +144,8 @@ class App(ctk.CTk):
         self.after(30, self._pump)
         self.protocol("WM_DELETE_WINDOW", self._quit)
         threading.Thread(target=self.check_updates, daemon=True).start()
+        if config.BRAIN == "local":   # load the local model into the graphics card now
+            threading.Thread(target=self.eris.brain.prewarm, daemon=True).start()
         if config.BRAIN != "local" and not settings.api_key():
             self.after(700, self.open_settings)
 
@@ -517,6 +519,7 @@ class SettingsWindow(ctk.CTkToplevel):
         self.voice_pick.pack(side="left", fill="x", expand=True)
         ctk.CTkButton(vrow, text="▶ Preview", width=96, corner_radius=14, fg_color=T.ACCENT,
                       hover_color=T.ACCENT_HOVER, command=self._preview).pack(side="right", padx=(8, 0))
+        self.ack = self._switch(c, "Quick \"on it\" reply when she hears you", config.ACK)
         self._label(c, "Talking speed")
         self.rate = ctk.CTkSlider(c, from_=-5, to=10, number_of_steps=15, button_color=T.ACCENT,
                                   button_hover_color=T.GLOW, progress_color=T.ACCENT,
@@ -526,6 +529,20 @@ class SettingsWindow(ctk.CTkToplevel):
         self._label(c, "Hearing you: tiny = fastest, small = most accurate")
         self.whisper = self._seg(c, ["tiny.en", "base.en", "small.en"])
         self.whisper.set(config.WHISPER_MODEL)
+
+        # ---- Privacy ----
+        c = self._card(body, "Privacy")
+        self.privacy = self._switch(c, "Look away from private things", config.PRIVACY)
+        self._muted(c, "While you type in a password, email, card or code box, Eris takes no "
+                       "screenshots. Those boxes are also blacked out in every screenshot before "
+                       "it leaves your PC. She only ever hears her own hotkeys and Enter, never "
+                       "what you type.")
+        self._label(c, "Never look at these apps (window titles, comma separated)")
+        self.private_apps = ctk.CTkEntry(c, fg_color=T.CARD_2, border_color=T.BORDER, height=34)
+        self.private_apps.insert(0, ", ".join(config.PRIVATE_APPS))
+        self.private_apps.pack(fill="x", pady=(4, 0))
+        self._muted(c, "Tip: the Free brain keeps everything on your PC. With Claude, screenshots "
+                       "go to Anthropic to be understood.")
 
         # ---- Keys ----
         c = self._card(body, "Keys")
@@ -544,6 +561,9 @@ class SettingsWindow(ctk.CTkToplevel):
 
         # ---- Red box ----
         c = self._card(body, "Guiding")
+        self._label(c, "Box style")
+        self.box_style = self._seg(c, ["Glow", "Simple"])
+        self.box_style.set("Glow" if config.BOX_STYLE == "glow" else "Simple")
         self.timeout_label = self._label(c, "")
         self.timeout = ctk.CTkSlider(c, from_=5, to=60, number_of_steps=11, button_color=T.ACCENT,
                                      button_hover_color=T.GLOW, progress_color=T.ACCENT,
@@ -711,12 +731,20 @@ class SettingsWindow(ctk.CTkToplevel):
         config.VOICE_NAME = VOICES[self.voice_pick.get()]
         config.VOICE_RATE = int(round(self.rate.get()))
         config.WHISPER_MODEL = self.whisper.get()
+        threading.Thread(target=self.app.eris.voice.prepare_acks, daemon=True).start()
         for name, m in self.keys.items():
             setattr(config, name, m.get().lower())
         config.BOX_TIMEOUT = int(round(self.timeout.get()))
         config.PANEL_ON_TOP = bool(self.on_top.get())
         config.WATCH = bool(self.watch.get())
         config.REFINE = bool(self.refine.get())
+        config.PRIVACY = bool(self.privacy.get())
+        config.PRIVATE_APPS = [a.strip() for a in self.private_apps.get().split(",") if a.strip()]
+        config.ACK = bool(self.ack.get())
+        new_style = "glow" if self.box_style.get() == "Glow" else "bars"
+        if new_style != config.BOX_STYLE:
+            config.BOX_STYLE = new_style
+            self.app.log("info", "Box style changes next time you open Eris.")
         settings.save()
         self._restore = None
         self.app.attributes("-topmost", config.PANEL_ON_TOP)

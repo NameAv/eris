@@ -12,7 +12,7 @@ import time
 import numpy as np
 from PIL import Image
 
-from . import config, screen
+from . import config, privacy, screen
 
 TW, TH = 320, 180          # thumbnail size
 PIXEL_DIFF = 22            # how different a pixel must be to count (0-255)
@@ -82,7 +82,7 @@ class Watcher:
     def _ready(self):
         e = self.eris
         return (config.WATCH and e.active and e.waiting and not e.busy and e.mon
-                and e.auto_looks < MAX_LOOKS_PER_STEP)
+                and e.auto_looks < MAX_LOOKS_PER_STEP and not privacy.should_look_away())
 
     def _loop(self):
         sct = None
@@ -116,12 +116,12 @@ class Watcher:
                 self.still_since = None
             elif self.still_since is None:
                 self.still_since = now
-            settle = 1.0 if self.eris.waiting == "click" else 1.8
+            settle = 0.8 if self.eris.waiting == "click" else 1.4
             settled = (self.changed_at is not None and self.still_since is not None
                        and now - self.still_since >= settle)
             patience = 8 * 2 ** min(self.keep_streak, 4)   # 8s, 16s, 32s... for busy screens
             busy_screen = self.changed_at is not None and now - self.changed_at > patience
-            nudged = self.nudged_at is not None and now - self.nudged_at > 1.2
+            nudged = self.nudged_at is not None and now - self.nudged_at > 0.8
             if (settled or busy_screen or nudged) and now - self.last_fire >= MIN_GAP:
                 self.last_fire = now
                 self.base, self.changed_at, self.still_since, self.nudged_at = frame, None, None, None

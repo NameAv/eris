@@ -30,6 +30,17 @@ After that, just open **Eris** from the Desktop. No command window.
 - **Active** switch: turn it off and Eris ignores the hotkeys.
 - **Settings**: brain, voice, hotkeys, box timeout, keep-on-top, and a *Test the red box* button.
 
+## Privacy
+
+- While you type into a password, email, card or code box, Eris takes **no screenshots**.
+- Those boxes are **blacked out** in every screenshot before it leaves your PC.
+- Password managers (and any app you add in Settings, then Privacy) are never looked at.
+- The keyboard hook only keeps her hotkeys and Enter. Everything you type is dropped instantly.
+- The Free brain keeps everything on your PC.
+
+Detection uses Windows' accessibility info (the same info screen readers use). Apps that draw their
+own password boxes can't be detected, so use the blocklist or the Active switch for those.
+
 ## Brains (Settings, then Brain)
 
 | Option | Cost | Notes |
@@ -66,6 +77,8 @@ If it can't connect, Eris switches to the built-in Windows voice by herself. Use
 - `eris/settings.py`: saves your settings to %APPDATA%\Eris
 - `eris/brain.py`: the prompt, plus the Claude and local (Ollama) brains
 - `eris/protocol.py`: parses `BOX / SAY / WAIT / DONE` lines as they stream in
+- `eris/privacy.py`: looking away from and blacking out private fields
+- `eris/glowbox.py`: the rounded, glowing box
 - `eris/snap.py`: snaps boxes onto real edges (pixels)
 - `eris/uia.py`: asks Windows for exact element rectangles
 - `eris/watcher.py`: notices when your screen changes while she's waiting

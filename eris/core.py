@@ -9,7 +9,7 @@ import traceback
 
 from pynput import keyboard
 
-from . import config, screen, settings, snap
+from . import config, privacy, screen, settings, snap
 from .brain import Brain, locate
 from .speech import Voice, beep
 from .watcher import Watcher
@@ -47,6 +47,8 @@ class Eris:
         self.told_watch = False
         self.early_click = None  # gen of a box you clicked before she finished talking
         self.box_gen = None
+        self.pre_shot = None     # (token, time, Shot) taken when you let go of the talk key
+        self.pre_token = None
         threading.Thread(target=self._input_worker, daemon=True).start()
         self.watcher = Watcher(self)
         self.load_ears()
@@ -109,11 +111,12 @@ class Eris:
             self.ui.cmd("active", True)
         self.ui.log("you", text)
         self.voice.stop()
+        self.voice.ack()   # a quick "on it" so you know she heard you
         self._clear()
         self.steps = 0
         self.auto_looks = self.task_looks = 0
         my = self._new_gen()
-        threading.Thread(target=self._turn_safe, args=(my, text), daemon=True).start()
+        threading.Thread(target=self._turn_safe, args=(my, text, False, True), daemon=True).start()
 
     def advance(self):
         """Step finished (click in box or Next): box goes away NOW, then look again."""
@@ -151,11 +154,11 @@ class Eris:
     def busy(self):
         return self._busy > 0
 
-    def _turn_safe(self, my, text, soft=False):
+    def _turn_safe(self, my, text, soft=False, allow_pre=False):
         with self.lock:
             self._busy += 1
         try:
-            self._turn(my, text, soft)
+            self._turn(my, text, soft, allow_pre)
         except Exception as e:
             self.ui.log("error", f"Something broke: {e}")
             self.ui.log("debug", traceback.format_exc())
@@ -165,14 +168,24 @@ class Eris:
             with self.lock:
                 self._busy -= 1
 
-    def _turn(self, my, text, soft=False):
+    def _turn(self, my, text, soft=False, allow_pre=False):
         """One step. soft=True is an automatic look: the current box stays up
         unless the brain has something new to say (it can reply KEEP)."""
         alive = lambda: my == self.gen
         if not soft:
             self.ui.cmd("status", "Looking...")
             self.ui.cmd("state", "thinking")
-        shot = screen.grab(snap=self.brain.snap(), max_w=self.brain.shot_width())
+        why = privacy.should_look_away()
+        if why:   # never take a screenshot while you type a password / use a private app
+            self.ui.cmd("status", "")
+            if not soft:
+                self.ui.cmd("state", "guiding")
+                self.ui.log("hint", f"I looked away ({why}). Press {config.NEXT_KEY.upper()} "
+                                    "when you're done and I'll look again.")
+                self.voice.say("I'll look away while you do that. Press F9 when you're done.")
+                self.waiting = self.waiting or "next"
+            return
+        shot = self._take_shot(allow_pre)
         if not alive():
             return
         self.mon = (shot.left, shot.top, shot.width, shot.height)
@@ -308,6 +321,28 @@ class Eris:
                 self.ui.log("hint", "I'm watching your screen and will notice when you're done "
                                     f"(or press {config.NEXT_KEY.upper()}).")
 
+    def _take_shot(self, allow_pre=False):
+        """Screenshot with private fields blacked out. For a spoken question, uses the
+        one taken the moment you let go of the talk key (saves time). That one is
+        only ever used for that question, never for a later step."""
+        pre, token = self.pre_shot, self.pre_token
+        self.pre_shot = self.pre_token = None
+        if allow_pre and pre and pre[0] is token and time.time() - pre[1] < 4:
+            return pre[2]
+        return screen.grab(snap=self.brain.snap(), max_w=self.brain.shot_width(),
+                           hide=privacy.hidden_fields())
+
+    def _prepare_shot(self, token):
+        """Take the screenshot while your words are still being transcribed."""
+        try:
+            if not privacy.should_look_away():
+                shot = screen.grab(snap=self.brain.snap(), max_w=self.brain.shot_width(),
+                                   hide=privacy.hidden_fields())
+                if token is self.pre_token:      # still the same question
+                    self.pre_shot = (token, time.time(), shot)
+        except Exception:
+            self.pre_shot = None
+
     def _take_avatar(self, shot, st, my):
         """She picked a profile picture: cut it out of the screenshot (once the box
         has snapped onto it) and make it her picture in the app."""
@@ -339,6 +374,7 @@ class Eris:
         self.talking = True
         self.cancel()
         beep("start")
+        threading.Thread(target=self.brain.prewarm, daemon=True).start()   # wake the brain up now
         self.ui.cmd("status", "Listening...")
         self.ui.cmd("state", "listening")
         try:
@@ -355,6 +391,8 @@ class Eris:
         beep("stop")
         self.ui.cmd("status", "Thinking...")
         self.ui.cmd("state", "thinking")
+        self.pre_token = token = object()
+        threading.Thread(target=self._prepare_shot, args=(token,), daemon=True).start()
 
         def work():
             text = self.ears.stop_and_transcribe()
@@ -387,11 +425,21 @@ class Eris:
         if pressed and self.box:
             self.inbox.put(("click", x, y))
 
+    def _wanted(self, key):
+        """Only Eris's own hotkeys and Enter get past the hook. Letters, numbers and
+        everything else you type are dropped right here and never stored."""
+        if not isinstance(key, keyboard.Key):
+            return False
+        return key == keyboard.Key.enter or key.name in (
+            config.TALK_KEY.lower(), config.NEXT_KEY.lower(), config.CANCEL_KEY.lower())
+
     def on_press(self, key):
-        self.inbox.put(("press", key, None))
+        if self._wanted(key):
+            self.inbox.put(("press", key, None))
 
     def on_release(self, key):
-        self.inbox.put(("release", key, None))
+        if self._wanted(key):
+            self.inbox.put(("release", key, None))
 
     def _handle_click(self, x, y):
         if not self.box:

@@ -137,18 +137,12 @@ def pixel_snap(full, box, left=0, top=0):
     return (nx1 + rx1 + left - p, ny1 + ry1 + top - p, nx2 + rx1 + left + p, ny2 + ry1 + top + p)
 
 
-_uia = None
-
-
 def snap(shot, box):
     """Best exact box for `box` (screen coords), or None to keep it."""
-    global _uia
     if sys.platform == "win32" and config.USE_UIA:
         try:
-            if _uia is None:
-                from .uia import UIA
-                _uia = UIA()
-            exact = _uia.snap(box)
+            from . import uia
+            exact = uia.get().snap(box)
             if exact:
                 return exact
         except Exception:

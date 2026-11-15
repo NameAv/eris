@@ -8,6 +8,7 @@ If natural fails (offline etc.) Eris falls back to the Windows voice by herself.
 """
 import asyncio
 import os
+import random
 import queue
 import sys
 import tempfile
@@ -25,6 +26,7 @@ VOICES = {  # label in settings -> edge-tts voice name
     "Libby (UK, soft)": "en-GB-LibbyNeural",
     "Natasha (Australia)": "en-AU-NatashaNeural",
 }
+ACKS = ["Mm-hm.", "On it.", "Okay, let me look.", "Sure thing.", "One sec."]
 PREVIEW = "Hi, I'm Eris. Hold F8 and ask me anything, and I'll show you where to click."
 
 
@@ -38,6 +40,7 @@ class Voice:
         self.tmp = tempfile.mkdtemp(prefix="eris-voice-")
         self.warned = False
         self.natural_off_until = 0.0   # after a failure, use the Windows voice for a bit
+        threading.Thread(target=self.prepare_acks, daemon=True).start()
         threading.Thread(target=self._synth_loop, daemon=True).start()
         threading.Thread(target=self._play_loop, daemon=True).start()
         threading.Thread(target=self._sapi_loop, daemon=True).start()
@@ -46,11 +49,53 @@ class Voice:
     def say(self, text: str, force=False):
         if not (config.VOICE_ON or force):
             return
-        if (config.VOICE_ENGINE == "natural" and sys.platform == "win32"
-                and time.time() >= self.natural_off_until):
+        if self._natural():
             self.text_q.put((self.gen, text))
         else:
             self.sapi_q.put(("say", text))
+
+    def ack(self):
+        """A tiny instant reply ("On it.") so you know she heard you. Natural-voice
+        clips are made once in the background and kept, so they play instantly."""
+        if not (config.VOICE_ON and config.ACK):
+            return
+        clips = self._ack_clips()
+        if self._natural() and clips:
+            self.audio_q.put((self.gen, random.choice(clips)))
+        elif not self._natural():
+            self.sapi_q.put(("say", random.choice(ACKS)))
+
+    def _ack_dir(self):
+        from . import settings
+        return settings.folder() / "voice" / config.VOICE_NAME
+
+    def _ack_clips(self):
+        d = self._ack_dir()
+        return [str(p) for p in sorted(d.glob("ack*.mp3"))] if d.exists() else []
+
+    def prepare_acks(self):
+        """Make the quick-reply clips for the current voice (once, in the background)."""
+        if sys.platform != "win32" or config.VOICE_ENGINE != "natural":
+            return
+        try:
+            import edge_tts
+            d = self._ack_dir()
+            d.mkdir(parents=True, exist_ok=True)
+            loop = asyncio.new_event_loop()
+            for i, text in enumerate(ACKS):
+                path = d / f"ack{i}.mp3"
+                if not path.exists():
+                    tmp = d / f"ack{i}.tmp"
+                    comm = edge_tts.Communicate(text, config.VOICE_NAME, rate="+8%")
+                    loop.run_until_complete(asyncio.wait_for(comm.save(str(tmp)), 8))
+                    os.replace(tmp, path)
+            loop.close()
+        except Exception:
+            pass
+
+    def _natural(self):
+        return (config.VOICE_ENGINE == "natural" and sys.platform == "win32"
+                and time.time() >= self.natural_off_until)
 
     def stop(self):
         self.gen += 1

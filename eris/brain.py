@@ -4,6 +4,7 @@ Three brains: Claude Opus (best), Claude Haiku (very cheap), or a free local
 vision model running on your own PC through Ollama.
 """
 import json
+import time
 import urllib.error
 import urllib.request
 
@@ -80,6 +81,13 @@ box (e.g. the big box in the middle of google.com) and a website's own search bo
 Wikipedia's, which only searches Wikipedia). Pick the one that fits the task and call it \
 by the right name. To go to a new website, use the address bar.
 
+Privacy:
+- Dark blocks labelled "hidden" cover private fields (passwords, emails, card numbers, \
+codes). Never try to read or guess what's under them.
+- Never put a password, card number, code or other secret in TYPE or SAY, and never ask \
+them to say one out loud. When they need to enter one, box the field, tell them to type \
+it in themselves, and WAIT next. You look away automatically while they type it.
+
 How to guide well:
 - ONE action per reply. You'll get a fresh screenshot after they do it.
 - Pick the easiest route for a beginner. Never make them type a full web address or \
@@ -127,6 +135,7 @@ class Brain:
         self.client = None
         self._key = None
         self.history = []   # text only; old screenshots aren't re-sent (keeps it fast)
+        self.last_call = 0.0
 
     def _get_client(self):
         key = settings.api_key()
@@ -140,6 +149,49 @@ class Brain:
 
     def reset(self):
         self.history = []
+
+    def _system(self):
+        system = [{"type": "text", "text": SYSTEM, "cache_control": CACHE}]
+        mem = memory_text()
+        if mem:   # after the cached block, so new memories don't break that cache
+            system.append({"type": "text", "text": mem})
+        return system
+
+    def _cached_history(self):
+        history = [dict(m) for m in self.history]
+        if history:
+            last = history[-1]
+            history[-1] = {"role": last["role"], "content": [
+                {"type": "text", "text": last["content"], "cache_control": CACHE}]}
+        return history
+
+    def prewarm(self):
+        """Called the moment you press the talk key: while you're still speaking, open
+        the connection and load the prompt into the cache (Claude), or load the model
+        into your graphics card (local). Then the real answer starts sooner."""
+        if time.time() - self.last_call < 200:
+            return   # still warm
+        self.last_call = time.time()
+        try:
+            if config.BRAIN == "local":
+                body = json.dumps({"model": config.LOCAL_MODEL, "keep_alive": "30m"}).encode()
+                req = urllib.request.Request(config.OLLAMA_URL.rstrip("/") + "/api/generate",
+                                             data=body, headers={"Content-Type": "application/json"})
+                urllib.request.urlopen(req, timeout=60).read()
+                return
+            client = self._get_client()
+            if not client:
+                return
+            messages = self._cached_history() + [{"role": "user", "content": "(warming up)"}]
+            req = dict(max_tokens=0, system=self._system(), messages=messages,
+                       output_config={"effort": config.EFFORT})
+            if config.BRAIN == "claude-cheap":
+                client.messages.create(model=config.CHEAP_MODEL, **req)
+            else:
+                client.beta.messages.create(model=config.MODEL, betas=["server-side-fallback-2026-07-01"],
+                                            fallbacks="default", **req)
+        except Exception as e:
+            self.log("debug", f"prewarm skipped: {e}")
 
     @staticmethod
     def shot_width():
@@ -188,21 +240,13 @@ class Brain:
         # Prompt caching: the system prompt and earlier conversation are re-read
         # from cache (much cheaper, and replies start sooner). Breakpoint 1 is the
         # system prompt; breakpoint 2 is the last message of the history.
-        history = [dict(m) for m in self.history]
-        if history:
-            last = history[-1]
-            history[-1] = {"role": last["role"], "content": [
-                {"type": "text", "text": last["content"], "cache_control": CACHE}]}
-        messages = history + [{"role": "user", "content": [
+        self.last_call = time.time()
+        messages = self._cached_history() + [{"role": "user", "content": [
             {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
                                          "data": shot.b64}},
             {"type": "text", "text": user_text},
         ]}]
-        system = [{"type": "text", "text": SYSTEM, "cache_control": CACHE}]
-        mem = memory_text()
-        if mem:   # after the cached block, so new memories don't break that cache
-            system.append({"type": "text", "text": mem})
-        common = dict(max_tokens=config.MAX_TOKENS, system=system,
+        common = dict(max_tokens=config.MAX_TOKENS, system=self._system(),
                       messages=messages, output_config={"effort": config.EFFORT})
         reply = []
         try:
@@ -245,6 +289,7 @@ class Brain:
         # num_ctx: Ollama's default context is too small for the instructions plus a
         # screenshot (~1200 tokens) plus history, and it silently drops the start
         # (the instructions!) when it overflows.
+        self.last_call = time.time()
         body = json.dumps({"model": config.LOCAL_MODEL, "messages": messages, "stream": True,
                            "keep_alive": "30m",
                            "options": {"temperature": 0.2, "num_ctx": 8192}}).encode()

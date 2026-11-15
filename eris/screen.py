@@ -4,7 +4,7 @@ import io
 from dataclasses import dataclass, field
 
 import mss
-from PIL import Image
+from PIL import Image, ImageDraw
 from pynput.mouse import Controller
 
 from . import config
@@ -75,13 +75,27 @@ def monitor_under_mouse(sct):
     return sct.monitors[1]
 
 
-def grab(snap=1, max_w=None) -> Shot:
+def _black_out(img, rects, mon):
+    """Cover private fields (screen coords) with a solid block labelled 'hidden'."""
+    d = ImageDraw.Draw(img)
+    for x1, y1, x2, y2 in rects:
+        a, b = x1 - mon["left"] - 2, y1 - mon["top"] - 2
+        c, e = x2 - mon["left"] + 2, y2 - mon["top"] + 2
+        if c <= 0 or e <= 0 or a >= img.width or b >= img.height:
+            continue
+        d.rectangle((a, b, c, e), fill=(20, 20, 20))
+        d.text((a + 6, b + max(2, (e - b) // 2 - 6)), "hidden", fill=(200, 200, 200))
+
+
+def grab(snap=1, max_w=None, hide=()) -> Shot:
     """snap=28 makes both sides multiples of 28, which local Qwen-VL models
     need so their coordinates line up exactly with the image we sent."""
     with new_sct() as sct:
         mon = monitor_under_mouse(sct)
         raw = sct.grab(mon)
     img = Image.frombytes("RGB", raw.size, raw.bgra, "raw", "BGRX")
+    if hide:   # before anything else touches it, so private fields never leave the PC
+        _black_out(img, hide, mon)
     full = img
     w, h = img.size
     max_w = max_w or config.SHOT_MAX_WIDTH
@@ -90,7 +104,7 @@ def grab(snap=1, max_w=None) -> Shot:
     if snap > 1:
         w, h = max(snap, round(w / snap) * snap), max(snap, round(h / snap) * snap)
     if (w, h) != img.size:
-        img = img.resize((w, h), Image.LANCZOS)
+        img = img.resize((w, h), Image.LANCZOS, reducing_gap=2.0)   # fast high-quality shrink
     buf = io.BytesIO()
     img.save(buf, "JPEG", quality=config.SHOT_JPEG_QUALITY)
     return Shot(base64.standard_b64encode(buf.getvalue()).decode(), mon["left"], mon["top"],

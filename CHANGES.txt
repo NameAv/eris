@@ -1,3 +1,4 @@
+v1.4.0: Much more precise red boxes (she zooms in and snaps onto the exact thing), no more text bubble, what to type shows inside the box, knows which search box is which, and more personality.
 v1.3.0: Full check-up. Clicking the box while she talks now works, cheaper and faster replies (caching), free brain fix, no more two Erises at once, better mic handling.
 v1.2.0: Eris now watches your screen while helping and reacts to what you do. Shows exactly what to type, never asks for full web addresses, and points out the right search result.
 v1.1.1: F8 and clicks now work while you are in Unity or any other app.

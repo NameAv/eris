@@ -7,7 +7,7 @@ from pathlib import Path
 from . import config
 
 SAVED = ["BRAIN", "LOCAL_MODEL", "VOICE_ENGINE", "VOICE_NAME", "API_KEY", "EFFORT", "FAST_MODE", "VOICE_ON", "VOICE_RATE", "WHISPER_MODEL",
-         "TALK_KEY", "NEXT_KEY", "CANCEL_KEY", "BOX_TIMEOUT", "PANEL_ON_TOP", "WATCH"]
+         "TALK_KEY", "NEXT_KEY", "CANCEL_KEY", "BOX_TIMEOUT", "PANEL_ON_TOP", "WATCH", "REFINE"]
 
 
 def folder() -> Path:

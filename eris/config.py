@@ -19,7 +19,7 @@ CANCEL_KEY = "f10"      # stop everything, clear the box
 # --- Red box ---
 BOX_COLOR = "#ff2a3d"
 BOX_WIDTH = 4
-BOX_PADDING = 6         # px of extra room around the target
+BOX_PADDING = 4         # px of extra room around the target
 BOX_TIMEOUT = 20        # seconds before the box hides itself no matter what
 CLICK_SLOP = 12         # px: a click this close to the box still counts
 SETTLE_DELAY = 0.7      # seconds to let the UI update after your click before looking again
@@ -39,6 +39,7 @@ VOICE_ENGINE = "natural"   # "natural" (free neural voice, needs internet) or "w
 VOICE_NAME = "en-US-AvaNeural"
 VOICE_RATE = 1          # Windows voice speed: -10 (slow) .. 10 (fast)
 
+REFINE = True           # zoom in to snap the box exactly onto the target
 WATCH = True            # watch the screen while waiting and react to what you do
 PANEL_ON_TOP = False    # keep the Eris window above other windows
 

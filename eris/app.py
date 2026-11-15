@@ -25,7 +25,7 @@ from .overlay import Overlay
 from .speech import PREVIEW, VOICES
 
 FKEYS = [f"f{i}" for i in range(1, 13)]
-OVERLAY_CMDS = {"box", "caption", "clear_box", "status", "monitor"}
+OVERLAY_CMDS = {"box", "move_box", "type_hint", "caption", "clear_box", "status", "monitor"}
 SUGGESTIONS = ["How do I add a Rigidbody?", "How do I make a new C# script?",
                "Where do I change the camera background?"]
 BRAINS = {  # segmented label -> (config value, description)
@@ -527,6 +527,9 @@ class SettingsWindow(ctk.CTkToplevel):
         self.timeout.set(config.BOX_TIMEOUT)
         self._timeout_text(config.BOX_TIMEOUT)
         self.timeout.pack(fill="x", pady=(4, 8))
+        self.refine = self._switch(c, "Extra-precise boxes", config.REFINE)
+        self._muted(c, "After drawing the box, Eris zooms in and snaps it exactly onto the "
+                       "thing to click. Uses a little more AI.")
         self.watch = self._switch(c, "Watch what I do and react", config.WATCH)
         self._muted(c, "While she's waiting, Eris notices when your screen changes (you typed, "
                        "a page loaded, you clicked something else) and helps from there. "
@@ -673,6 +676,7 @@ class SettingsWindow(ctk.CTkToplevel):
         config.BOX_TIMEOUT = int(round(self.timeout.get()))
         config.PANEL_ON_TOP = bool(self.on_top.get())
         config.WATCH = bool(self.watch.get())
+        config.REFINE = bool(self.refine.get())
         settings.save()
         self._restore = None
         self.app.attributes("-topmost", config.PANEL_ON_TOP)

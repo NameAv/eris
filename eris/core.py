@@ -10,7 +10,7 @@ import traceback
 from pynput import keyboard
 
 from . import config, screen
-from .brain import Brain
+from .brain import Brain, locate
 from .speech import Voice, beep
 from .watcher import Watcher
 
@@ -177,7 +177,22 @@ class Eris:
             return
         self.mon = (shot.left, shot.top, shot.width, shot.height)
         self.ui.cmd("monitor", *self.mon)
-        st = {"ended": False, "first": True, "kept": False, "caption": ""}
+        st = {"ended": False, "first": True, "kept": False, "refining": False}
+
+        def refine(rough, what):
+            """Zoom in and snap the box onto the exact element (runs alongside her talking)."""
+            if st["refining"] or not config.REFINE:
+                return
+            st["refining"] = True
+
+            def work():
+                tight = locate(self.brain, shot, rough, what, alive)
+                if tight and alive() and self.box == rough:
+                    self.box = tight
+                    self.ui.cmd("move_box", *tight)
+                    if self.waiting and not self.busy:
+                        self.watcher.rebase(delay=0.3)   # the box moving isn't you doing something
+            threading.Thread(target=work, daemon=True).start()
 
         def on_event(ev):
             if not alive() or st["kept"]:
@@ -208,21 +223,23 @@ class Eris:
                 self.box = shot.to_screen(ev.value)
                 self.box_gen = my
                 self.early_click = None
-                self.ui.cmd("box", *self.box, "")
+                st["refining"] = False
+                self.ui.cmd("box", *self.box)
+            elif ev.kind == "what":
+                if self.box and self.box_gen == my:
+                    refine(self.box, ev.value)
             elif ev.kind == "nobox":
                 self._clear()
             elif ev.kind == "type":
-                st["caption"] = f"Type:   {ev.value}"
-                self.ui.cmd("caption", st["caption"])
+                self.ui.cmd("type_hint", ev.value)
                 self.ui.log("hint", f"Type:  {ev.value}")
             elif ev.kind == "say":
                 self.ui.cmd("status", "")
                 self.ui.cmd("state", "guiding")
                 self.ui.log("eris", ev.value)
                 self.voice.say(ev.value)
-                if not st["caption"]:
-                    st["caption"] = ev.value
-                    self.ui.cmd("caption", ev.value)
+                if self.box and self.box_gen == my:   # no WHAT line: use what she said
+                    refine(self.box, ev.value)
             elif ev.kind in ("wait", "keep"):
                 st["ended"] = True
                 mode = ev.value if ev.kind == "wait" else "next"

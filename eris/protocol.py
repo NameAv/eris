@@ -2,6 +2,7 @@
 
 Claude is told to answer in this exact shape:
     BOX x1 y1 x2 y2        (or NOBOX)  <- first line, so the box shows instantly
+    WHAT the exact element             <- used to zoom in and snap the box onto it
     TYPE exact text                    <- optional: what to type, shown big on screen
     SAY one short sentence             <- spoken as soon as each line arrives
     SAY ...
@@ -14,7 +15,7 @@ from dataclasses import dataclass
 
 @dataclass
 class Event:
-    kind: str            # "box" | "nobox" | "type" | "say" | "wait" | "done" | "keep" | "fail"
+    kind: str            # "box" | "nobox" | "type" | "say" | "wait" | "done" | "keep" | "fail" | "what" | "none"
     value: object = None
 
 
@@ -47,6 +48,10 @@ def parse_line(line: str):
         return Event("done")
     if head == "KEEP":
         return Event("keep")
+    if head == "WHAT":
+        return Event("what", rest) if rest else None
+    if head == "NONE":
+        return Event("none")
     if head == "TYPE":
         return Event("type", rest.strip('"').strip("'")) if rest else None
     # Anything off-format: just say it, rather than lose it.

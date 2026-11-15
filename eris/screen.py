@@ -1,7 +1,7 @@
 """Screenshots of whichever monitor your mouse is on."""
 import base64
 import io
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import mss
 from PIL import Image
@@ -23,6 +23,7 @@ class Shot:
     sy: float         # ...and vertically
     img_w: int
     img_h: int
+    full: object = field(default=None, repr=False)   # full-sharpness PIL image of the monitor
 
     def to_screen(self, box):
         """Image coords from the brain -> real desktop coords, clamped and padded."""
@@ -32,6 +33,33 @@ class Shot:
         p = config.BOX_PADDING
         return (int(self.left + x1 * self.sx) - p, int(self.top + y1 * self.sy) - p,
                 int(self.left + x2 * self.sx) + p, int(self.top + y2 * self.sy) + p)
+
+
+def zoom(shot, box, snap=1, max_w=900):
+    """Crop the full-sharpness screenshot around a box (screen coords) so the brain
+    can place it precisely. Returns (b64 jpeg, crop_left, crop_top, sx, sy, w, h)
+    where screen_x = crop_left + x * sx and screen_y = crop_top + y * sy."""
+    if shot.full is None:
+        return None
+    x1, y1, x2, y2 = box
+    cx, cy = (x1 + x2) / 2 - shot.left, (y1 + y2) / 2 - shot.top
+    bw, bh = max(x2 - x1, 40), max(y2 - y1, 24)
+    cw = int(min(max(bw * 3, 360), shot.width, 1400))
+    ch = int(min(max(bh * 5, 240), shot.height, 900))
+    left = int(min(max(cx - cw / 2, 0), shot.width - cw))
+    top = int(min(max(cy - ch / 2, 0), shot.height - ch))
+    crop = shot.full.crop((left, top, left + cw, top + ch))
+    w, h = crop.size
+    if w > max_w:
+        w, h = max_w, round(h * max_w / w)
+    if snap > 1:
+        w, h = max(snap, round(w / snap) * snap), max(snap, round(h / snap) * snap)
+    if (w, h) != crop.size:
+        crop = crop.resize((w, h), Image.LANCZOS)
+    buf = io.BytesIO()
+    crop.save(buf, "JPEG", quality=85)
+    return (base64.standard_b64encode(buf.getvalue()).decode(), shot.left + left,
+            shot.top + top, cw / w, ch / h, w, h)
 
 
 def new_sct():
@@ -54,6 +82,7 @@ def grab(snap=1) -> Shot:
         mon = monitor_under_mouse(sct)
         raw = sct.grab(mon)
     img = Image.frombytes("RGB", raw.size, raw.bgra, "raw", "BGRX")
+    full = img
     w, h = img.size
     if w > config.SHOT_MAX_WIDTH:
         w, h = config.SHOT_MAX_WIDTH, round(h * config.SHOT_MAX_WIDTH / w)
@@ -64,4 +93,4 @@ def grab(snap=1) -> Shot:
     buf = io.BytesIO()
     img.save(buf, "JPEG", quality=config.SHOT_JPEG_QUALITY)
     return Shot(base64.standard_b64encode(buf.getvalue()).decode(), mon["left"], mon["top"],
-                mon["width"], mon["height"], mon["width"] / w, mon["height"] / h, w, h)
+                mon["width"], mon["height"], mon["width"] / w, mon["height"] / h, w, h, full)

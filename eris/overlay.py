@@ -70,11 +70,11 @@ class Overlay:
     def __init__(self, master):
         self.master = master
         self.bars = [_piece(master, config.BOX_COLOR) for _ in range(4)]
+        # "type this" hint, shown inside the box (e.g. in the search bar)
         self.cap = _piece(master, theme.ACCENT)
-        self.cap_label = tk.Label(self.cap, text="", bg=theme.CAPTION_BG, fg="white",
-                                  font=(theme.FONT, 11, "bold"), padx=10, pady=5,
-                                  justify="left", wraplength=420)
-        self.cap_label.pack(padx=2, pady=2)
+        self.cap_label = tk.Label(self.cap, text="", bg=theme.ACCENT, fg="white",
+                                  font=(theme.FONT, 11, "bold"), padx=9, pady=2)
+        self.cap_label.pack()
         self.pill = _piece(master, theme.ACCENT)
         self.pill_label = tk.Label(self.pill, text="", bg=theme.CAPTION_BG, fg="white",
                                    font=(theme.FONT, 12, "bold"), padx=14, pady=6)
@@ -87,13 +87,16 @@ class Overlay:
             self.handles[p] = _click_through(p)
         self.geom = (0, 0, master.winfo_screenwidth(), master.winfo_screenheight())
         self.rect = None
+        self.hint = ""
         self.pill_shown = False
         self.box_timer = None
         self.flash_jobs = []
         master.after(1500, self._keep_on_top)
 
     def _keep_on_top(self):
-        visible = (self.bars + [self.cap]) if self.rect else []
+        visible = list(self.bars) if self.rect else []
+        if self.rect and self.hint:
+            visible.append(self.cap)
         if self.pill_shown:
             visible.append(self.pill)
         for p in visible:
@@ -107,27 +110,39 @@ class Overlay:
     def _park(self, win):
         win.geometry(f"1x1+{OFF}+{OFF}")
 
-    # ---- commands (names match app.cmd(...)) ----
-    def monitor(self, left, top, w, h):
-        self.geom = (left, top, w, h)
-
-    def box(self, x1, y1, x2, y2, caption=""):
-        """Screen coords. Replaces any existing box."""
-        self.clear_box()
+    def _draw_bars(self):
         t = config.BOX_WIDTH
-        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-        self.rect = (x1, y1, x2, y2)
+        x1, y1, x2, y2 = self.rect
         top, bottom, left, right = self.bars
         self._place(top, x1 - t, y1 - t, x2 - x1 + 2 * t, t)
         self._place(bottom, x1 - t, y2, x2 - x1 + 2 * t, t)
         self._place(left, x1 - t, y1, t, y2 - y1)
         self._place(right, x2, y1, t, y2 - y1)
-        for p in self.bars + [self.cap]:
+
+    # ---- commands (names match app.cmd(...)) ----
+    def monitor(self, left, top, w, h):
+        self.geom = (left, top, w, h)
+
+    def box(self, x1, y1, x2, y2, caption=""):
+        """Screen coords. Replaces any existing box (and its type hint)."""
+        self.clear_box()
+        self.rect = (int(x1), int(y1), int(x2), int(y2))
+        self._draw_bars()
+        for p in self.bars:
             _raise(p, self.handles.get(p))
         self._flash()
         if caption:
-            self.caption(caption)
+            self.type_hint(caption, prefix="")
         self.box_timer = self.master.after(int(config.BOX_TIMEOUT * 1000), self.clear_box)
+
+    def move_box(self, x1, y1, x2, y2):
+        """Snap the current box onto a more precise spot (no flashing, same timer)."""
+        if not self.rect:
+            return
+        self.rect = (int(x1), int(y1), int(x2), int(y2))
+        self._draw_bars()
+        if self.hint:
+            self._place_hint()
 
     def _flash(self):
         """Blink a few times so your eye snaps to it."""
@@ -139,18 +154,29 @@ class Overlay:
             self.flash_jobs.append(self.master.after(
                 90 * (i + 1), lambda c=c: [b.configure(bg=c) for b in self.bars]))
 
-    def caption(self, text):
+    def type_hint(self, text, prefix="type:  "):
+        """Show what to type inside the box (right end of a search bar), or just
+        under it if the box is too small."""
         if not self.rect:
             return
-        text = text if len(text) < 120 else text[:117] + "..."
-        self.cap_label.configure(text=text)
+        text = text if len(text) < 60 else text[:57] + "..."
+        self.hint = prefix + text
+        self.cap_label.configure(text=self.hint)
+        self._place_hint()
+        _raise(self.cap, self.handles.get(self.cap))
+
+    def _place_hint(self):
         self.cap.update_idletasks()
-        w, h = self.cap.winfo_reqwidth(), self.cap.winfo_reqheight()
+        w, h = self.cap_label.winfo_reqwidth(), self.cap_label.winfo_reqheight()
         x1, y1, x2, y2 = self.rect
-        gap = config.BOX_WIDTH + 6
-        y = y1 - gap - h if y1 - gap - h > self.geom[1] else y2 + gap
-        x = min(max(x1 - config.BOX_WIDTH, self.geom[0] + 4), self.geom[0] + self.geom[2] - w - 4)
+        if x2 - x1 >= w + 90 and y2 - y1 >= h + 2:      # fits inside: right end of the box
+            x, y = x2 - w - 6, y1 + (y2 - y1 - h) // 2
+        else:                                            # too small: just below it
+            x, y = x1, y2 + config.BOX_WIDTH + 4
         self._place(self.cap, x, y, w, h)
+
+    def caption(self, text):   # kept for older callers
+        self.type_hint(text, prefix="")
 
     def clear_box(self):
         if self.box_timer:
@@ -160,6 +186,7 @@ class Overlay:
             self.master.after_cancel(j)
         self.flash_jobs = []
         self.rect = None
+        self.hint = ""
         for p in self.bars + [self.cap]:
             self._park(p)
 

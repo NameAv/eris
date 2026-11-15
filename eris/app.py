@@ -1,4 +1,5 @@
 """The Eris window: chat bubbles, talk button, settings. Crimson on near-black."""
+import gc
 import os
 import queue
 import sys
@@ -107,12 +108,20 @@ class App(ctk.CTk):
         keyboard.Listener(on_press=self.eris.on_press, on_release=self.eris.on_release).start()
         mouse.Listener(on_click=self.eris.on_click).start()
         self.after(30, self._pump)
+        # Python's cycle cleanup can run on any thread; if it frees an old Tk font or image
+        # from a background thread, Tk crashes. So clean up only here, on the window's thread.
+        gc.disable()
+        self.after(3000, self._collect)
         self.protocol("WM_DELETE_WINDOW", self._quit)
         threading.Thread(target=self.check_updates, daemon=True).start()
         if config.BRAIN == "local":   # load the local model into the graphics card now
             threading.Thread(target=self.eris.brain.prewarm, daemon=True).start()
         if config.BRAIN != "local" and not settings.api_key():
             self.after(700, self.open_settings)
+
+    def _collect(self):
+        gc.collect()
+        self.after(3000, self._collect)
 
     # ---------- thread-safe API used by Eris ----------
     def cmd(self, name, *args):
@@ -162,6 +171,8 @@ class App(ctk.CTk):
                     self.avatar.load()
                 elif name == "clear_chat":
                     self._clear_chat()
+                elif name == "call":
+                    self._set_call(args[0])
                 elif name == "active":
                     self.active_switch.select() if args[0] else self.active_switch.deselect()
         except queue.Empty:
@@ -256,8 +267,9 @@ class App(ctk.CTk):
                                  fg_color=T.ACCENT, hover_color=T.ACCENT_HOVER,
                                  font=font(15, "bold"), text_color="#ffffff")
         self.mic.pack(fill="x", padx=18, pady=(0, 18))
-        self.mic.bind("<ButtonPress-1>", lambda e: self.eris.start_listening())
-        self.mic.bind("<ButtonRelease-1>", lambda e: self.eris.stop_listening())
+        self.mic.bind("<ButtonPress-1>", self._mic_down)
+        self.mic.bind("<ButtonRelease-1>", self._mic_up)
+        self.on_call = False
 
     def _welcome(self):
         """Greeting + a few ideas. Tucks itself away once you start talking."""
@@ -404,6 +416,40 @@ class App(ctk.CTk):
         self.bubbles = [x for x in self.bubbles if x.winfo_exists()]
         self._scroll_end()
 
+    # ---------- talk button: hold = push-to-talk, click = call on/off ----------
+    CLICK = 0.25   # pressed for less than this = a click
+
+    def _mic_down(self, _e=None):
+        self._down_at = time.time()
+        self._held = self.eris.begin_hold()
+        if not self._held and not self.eris.ears:
+            self._note("My ears are still loading. Give me a moment.", hold=4)
+        self._hold_job = self.after(int(self.CLICK * 1000), self.eris.confirm_hold) if self._held else None
+
+    def _mic_up(self, _e=None):
+        if getattr(self, "_hold_job", None):
+            self.after_cancel(self._hold_job)
+            self._hold_job = None
+        if time.time() - getattr(self, "_down_at", 0) < self.CLICK:
+            self.eris.abort_listening()
+            self.eris.toggle_call()
+        else:
+            self.eris.stop_listening()
+
+    def _set_call(self, on):
+        self.on_call = on
+        self._set_state("ready")
+        if on:
+            self._call_pulse()
+
+    def _call_pulse(self, phase=0):
+        """The button breathes gently while you're on a call with her."""
+        if not self.on_call:
+            return
+        if self.chip_text.cget("text") != "Listening":
+            self.mic.configure(fg_color=T.ACCENT if phase else "#b01e33")
+        self.after(800, lambda: self._call_pulse(1 - phase))
+
     def _send(self):
         text = self.entry.get().strip()
         if text:
@@ -415,10 +461,16 @@ class App(ctk.CTk):
         self.chip_text.configure(text=label)
         self.chip_dot.configure(fg_color=colour)
         self.avatar.pulse(state in ("listening", "thinking"))
+        on_call = getattr(self, "on_call", False)
         if state == "listening":
-            self.mic.configure(text="Listening... let go when you're done", fg_color=T.GLOW)
+            self.mic.configure(text="Listening..." if on_call else "Listening... let go when you're done",
+                               fg_color=T.GLOW)
+        elif on_call:
+            self.mic.configure(text="On a call with Eris  ·  click to hang up", fg_color=T.ACCENT)
+            if state in ("ready", "guiding"):
+                self.chip_text.configure(text="On call" if state == "ready" else label)
         else:
-            self.mic.configure(text=f"Hold to talk  ·  {config.TALK_KEY.upper()}",
+            self.mic.configure(text=f"Click to call  ·  hold to talk ({config.TALK_KEY.upper()})",
                                fg_color=T.ACCENT)
         brain = {"claude": "Opus brain", "claude-cheap": "Haiku brain",
                  "local": "free local brain"}.get(config.BRAIN, "")
@@ -440,6 +492,7 @@ class App(ctk.CTk):
             pass
 
     def _quit(self):
+        self.eris.stop_call()
         self.eris.cancel()
         self.destroy()
 

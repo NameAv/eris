@@ -15,7 +15,10 @@ After that, just open **Eris** from the Desktop. No command window.
 
 ## Using it
 
-- **Hold F8** (or hold the red *Hold to talk* button) and ask. Or type in the box.
+- **Click the big button to start a call.** Then just talk: she works out when you start and
+  stop speaking, and keeps listening until you click again to hang up. She doesn't listen while
+  she's talking, so she never hears herself.
+- **Hold F8** (or hold the button) for push-to-talk. Or type in the box.
 - Click inside the red box and Eris moves to the next step on her own.
 - **She watches while she helps.** When your screen changes (you typed, a page loaded, you
   clicked something else) she takes a fresh look and carries on, or helps you get back on track.

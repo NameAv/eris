@@ -286,8 +286,7 @@ class SettingsWindow(ctk.CTkToplevel):
             self.show_btn.pack(side="left", padx=6)
             self.button(row, "Test key", self._test_key, primary=True, width=90).pack(side="left")
             self.key_status = self.status_line(c)
-            link = ctk.CTkLabel(c, text="Open console.anthropic.com", font=ctk.CTkFont(
-                family=T.FONT, size=12, underline=True), text_color=T.GLOW, cursor="hand2", anchor="w")
+            link = ctk.CTkLabel(c, text="Open console.anthropic.com", font=font(12, underline=True), text_color=T.GLOW, cursor="hand2", anchor="w")
             link.pack(fill="x", pady=(4, 0))
             link.bind("<Button-1>", lambda e: webbrowser.open("https://console.anthropic.com/settings/keys"))
 

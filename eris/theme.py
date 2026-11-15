@@ -27,9 +27,18 @@ STATES = {  # state -> (label, dot colour)
 }
 
 
-def font(size=13, weight="normal"):
+_fonts = {}
+
+
+def font(size=13, weight="normal", underline=False, family=None):
+    """Shared font objects. They're made once and reused, never thrown away: Tk objects
+    must only ever be created and destroyed on the window's own thread."""
     import customtkinter as ctk
-    return ctk.CTkFont(family=FONT, size=size, weight=weight)
+    key = (size, weight, underline, family)
+    if key not in _fonts:
+        _fonts[key] = ctk.CTkFont(family=family or FONT, size=size, weight=weight,
+                                  underline=underline)
+    return _fonts[key]
 
 
 def tint_titlebar(win):

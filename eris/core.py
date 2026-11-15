@@ -48,6 +48,7 @@ class Eris:
         self.early_click = None  # gen of a box you clicked before she finished talking
         self.box_gen = None
         self.hotkeys_paused = False   # while you're choosing a new key in Settings
+        self.call = None              # call mode: always listening (see ears.Call)
         self.pre_shot = None     # (token, time, Shot) taken when you let go of the talk key
         self.pre_token = None
         threading.Thread(target=self._input_worker, daemon=True).start()
@@ -98,6 +99,7 @@ class Eris:
     def set_active(self, on):
         self.active = on
         if not on:
+            self.stop_call()
             self.cancel()
             self.ui.cmd("state", "off")
         else:
@@ -363,6 +365,57 @@ class Eris:
         self.ui.cmd("avatar")
         self.ui.log("info", "Eris has a new profile picture.")
 
+    # ---------- call mode ----------
+    @property
+    def on_call(self):
+        return self.call is not None
+
+    def toggle_call(self):
+        self.stop_call() if self.on_call else self.start_call()
+
+    def start_call(self):
+        if self.on_call or not self.active:
+            return
+        if not self.ears:
+            self.ui.log("hint", "My ears are still loading (or there's no mic). Try again in a moment.")
+            return
+        from .ears import Call
+        call = Call(self.ears, on_start=self._call_heard_you, on_text=self._call_text,
+                    muted=lambda: (self.voice.busy() or self.talking or not self.active
+                                   or self.hotkeys_paused))
+        try:
+            call.start()
+        except Exception as e:
+            self.ui.log("error", f"Couldn't open the microphone: {e}")
+            return
+        self.call = call
+        beep("start")
+        self.ui.cmd("call", True)
+        self.ui.log("info", "On a call: just talk, I'm listening. Click the button to hang up.")
+
+    def stop_call(self):
+        if not self.on_call:
+            return
+        self.call.stop()
+        self.call = None
+        beep("stop")
+        self.ui.cmd("call", False)
+        self.ui.cmd("status", "")
+        self.ui.log("info", "Call ended.")
+
+    def _call_heard_you(self):
+        self.ui.cmd("status", "Listening...")
+        self.ui.cmd("state", "listening")
+
+    def _call_text(self, text):
+        if not self.on_call:
+            return
+        if text:
+            self.ask(text)
+        else:
+            self.ui.cmd("status", "")
+            self.ui.cmd("state", "guiding" if self.waiting else "ready")
+
     # ---------- listening ----------
     def start_listening(self):
         if self.talking or not self.active:
@@ -382,6 +435,41 @@ class Eris:
             self.talking = False
             self.ui.log("error", f"Couldn't open the microphone: {e}")
             self.ui.cmd("status", "")
+
+    def begin_hold(self):
+        """Talk button pressed: start recording straight away (so your first word isn't
+        cut off) but don't interrupt anything yet; it might just be a click."""
+        if self.talking or not self.active or not self.ears:
+            return False
+        try:
+            self.ears.start()
+        except Exception as e:
+            self.ui.log("error", f"Couldn't open the microphone: {e}")
+            return False
+        self.talking = True
+        return True
+
+    def confirm_hold(self):
+        """Still held after a moment: it's push-to-talk."""
+        if not self.talking:
+            return
+        self._new_gen()
+        self.voice.stop()
+        self._clear()
+        self.steps = 0
+        beep("start")
+        self.ui.cmd("status", "Listening...")
+        self.ui.cmd("state", "listening")
+        threading.Thread(target=self.brain.prewarm, daemon=True).start()
+
+    def abort_listening(self):
+        """The talk button was only clicked, not held: forget that recording."""
+        if not self.talking:
+            return
+        self.talking = False
+        self.ears.abort()
+        self.ui.cmd("status", "")
+        self.ui.cmd("state", "ready")
 
     def stop_listening(self):
         if not self.talking:

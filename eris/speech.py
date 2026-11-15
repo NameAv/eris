@@ -40,6 +40,8 @@ class Voice:
         self.tmp = tempfile.mkdtemp(prefix="eris-voice-")
         self.warned = False
         self.natural_off_until = 0.0   # after a failure, use the Windows voice for a bit
+        self.playing = False           # a natural-voice clip is playing right now
+        self.sapi_speaking = False     # the Windows voice is speaking right now
         threading.Thread(target=self.prepare_acks, daemon=True).start()
         threading.Thread(target=self._synth_loop, daemon=True).start()
         threading.Thread(target=self._play_loop, daemon=True).start()
@@ -98,6 +100,11 @@ class Voice:
         return (config.VOICE_ENGINE == "natural" and sys.platform == "win32"
                 and time.time() >= self.natural_off_until)
 
+    def busy(self):
+        """Is she talking (or about to)? Call mode doesn't listen while she is."""
+        return (self.playing or self.sapi_speaking or not self.text_q.empty()
+                or not self.audio_q.empty() or not self.sapi_q.empty())
+
     def stop(self):
         self.gen += 1
         for q in (self.text_q, self.audio_q, self.sapi_q):
@@ -148,6 +155,7 @@ class Voice:
             g, path = self.audio_q.get()
             if g != self.gen:
                 continue
+            self.playing = True
             mci(f'open "{path}" type mpegvideo alias eris', None, 0, None)
             mci("play eris", None, 0, None)
             time.sleep(0.05)
@@ -160,6 +168,7 @@ class Voice:
                     break
                 time.sleep(0.03)
             mci("close eris", None, 0, None)
+            self.playing = False
 
     # ---------- Windows voice ----------
     def _sapi_loop(self):
@@ -187,7 +196,15 @@ class Voice:
             pass
         ASYNC, PURGE = 1, 2
         while True:
-            cmd, text = self.sapi_q.get()
+            try:
+                cmd, text = self.sapi_q.get(timeout=0.15)
+            except queue.Empty:
+                try:
+                    self.sapi_speaking = voice.Status.RunningState == 2   # 2 = speaking
+                except Exception:
+                    self.sapi_speaking = False
+                continue
+            self.sapi_speaking = True
             if cmd == "stop":
                 voice.Speak("", ASYNC | PURGE)
             else:

@@ -19,7 +19,11 @@ After that, just open **Eris** from the Desktop. No command window.
 - **She watches while she helps.** When your screen changes (you typed, a page loaded, you
   clicked something else) she takes a fresh look and carries on, or helps you get back on track.
   Turn it off in Settings, then Guiding.
-- **Precise boxes:** she draws the box, then zooms in and snaps it exactly onto the thing to click.
+- **Precise boxes:** she draws the box, then snaps it onto the real edges of the thing to click,
+  using Windows' own element info (browsers, most apps) or the pixels on screen (Unity), and
+  double-checks with a zoomed-in look.
+- **Her own personality and memory:** ask her to pick a profile picture and it becomes her
+  avatar in the app. She remembers things between sessions (Settings, then Forget everything).
 - When you need to type something, she shows exactly what to type inside the box.
 - **Next step / F9** is for steps that aren't a click (typing, dragging).
 - **Stop / F10** clears everything. **New task** makes her forget the last task.
@@ -62,6 +66,8 @@ If it can't connect, Eris switches to the built-in Windows voice by herself. Use
 - `eris/settings.py`: saves your settings to %APPDATA%\Eris
 - `eris/brain.py`: the prompt, plus the Claude and local (Ollama) brains
 - `eris/protocol.py`: parses `BOX / SAY / WAIT / DONE` lines as they stream in
+- `eris/snap.py`: snaps boxes onto real edges (pixels)
+- `eris/uia.py`: asks Windows for exact element rectangles
 - `eris/watcher.py`: notices when your screen changes while she's waiting
 - `eris/overlay.py`: the red box (four solid bars plus the in-box type hint)
 - `eris/ears.py`: push-to-talk and speech-to-text

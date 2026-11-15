@@ -39,6 +39,7 @@ VOICE_ENGINE = "natural"   # "natural" (free neural voice, needs internet) or "w
 VOICE_NAME = "en-US-AvaNeural"
 VOICE_RATE = 1          # Windows voice speed: -10 (slow) .. 10 (fast)
 
+USE_UIA = True          # ask Windows for exact element edges (browsers, most apps)
 REFINE = True           # zoom in to snap the box exactly onto the target
 WATCH = True            # watch the screen while waiting and react to what you do
 PANEL_ON_TOP = False    # keep the Eris window above other windows

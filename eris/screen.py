@@ -75,7 +75,7 @@ def monitor_under_mouse(sct):
     return sct.monitors[1]
 
 
-def grab(snap=1) -> Shot:
+def grab(snap=1, max_w=None) -> Shot:
     """snap=28 makes both sides multiples of 28, which local Qwen-VL models
     need so their coordinates line up exactly with the image we sent."""
     with new_sct() as sct:
@@ -84,8 +84,9 @@ def grab(snap=1) -> Shot:
     img = Image.frombytes("RGB", raw.size, raw.bgra, "raw", "BGRX")
     full = img
     w, h = img.size
-    if w > config.SHOT_MAX_WIDTH:
-        w, h = config.SHOT_MAX_WIDTH, round(h * config.SHOT_MAX_WIDTH / w)
+    max_w = max_w or config.SHOT_MAX_WIDTH
+    if w > max_w:
+        w, h = max_w, round(h * max_w / w)
     if snap > 1:
         w, h = max(snap, round(w / snap) * snap), max(snap, round(h / snap) * snap)
     if (w, h) != img.size:

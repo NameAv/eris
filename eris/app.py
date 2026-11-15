@@ -70,8 +70,26 @@ class Avatar(tk.Canvas):
     def __init__(self, master, size=54):
         super().__init__(master, width=size, height=size, bg=T.BG, highlightthickness=0)
         self.size, self.phase, self.pulsing = size, 0, False
-        self._draw(0)
+        self.photo = None
+        self.load()
         self._tick()
+
+    def load(self):
+        """Use the picture Eris chose for herself, cut into a circle."""
+        self.photo = None
+        try:
+            if settings.AVATAR.exists():
+                from PIL import Image, ImageDraw, ImageTk
+                d = self.size - 22
+                img = Image.open(settings.AVATAR).convert("RGB").resize((d * 3, d * 3))
+                mask = Image.new("L", img.size, 0)
+                ImageDraw.Draw(mask).ellipse((0, 0, img.width - 1, img.height - 1), fill=255)
+                bg = Image.new("RGB", img.size, "#16090c")
+                bg.paste(img, (0, 0), mask)
+                self.photo = ImageTk.PhotoImage(bg.resize((d, d), Image.LANCZOS))
+        except Exception:
+            self.photo = None
+        self._draw(0)
 
     def _draw(self, glow):
         self.delete("all")
@@ -81,7 +99,11 @@ class Avatar(tk.Canvas):
             self.create_oval(pad, pad, s - pad, s - pad, fill=c, outline="")
         self.create_oval(10, 10, s - 10, s - 10, fill="#16090c",
                          outline=T.GLOW if glow else T.ACCENT, width=3)
-        self.create_text(s / 2, s / 2 + 1, text="E", fill=T.TEXT, font=(T.FONT, 15, "bold"))
+        if self.photo:
+            self.create_image(s / 2, s / 2, image=self.photo)
+            self.create_oval(10, 10, s - 10, s - 10, outline=T.GLOW if glow else T.ACCENT, width=3)
+        else:
+            self.create_text(s / 2, s / 2 + 1, text="E", fill=T.TEXT, font=(T.FONT, 15, "bold"))
 
     def _tick(self):
         if self.pulsing:
@@ -168,6 +190,8 @@ class App(ctk.CTk):
                     self._quit()
                 elif name == "update_failed":
                     self.update_btn.configure(state="normal", text="Retry update")
+                elif name == "avatar":
+                    self.avatar.load()
                 elif name == "active":
                     self.active_switch.select() if args[0] else self.active_switch.deselect()
         except queue.Empty:
@@ -550,6 +574,15 @@ class SettingsWindow(ctk.CTkToplevel):
                       command=lambda: threading.Thread(target=self.app.check_updates, args=(True,),
                                                        daemon=True).start()).pack(side="right")
         self._link(c, "Open log folder", settings.folder().as_uri())
+        mem_n = len(settings.memories())
+        r2 = ctk.CTkFrame(c, fg_color="transparent")
+        r2.pack(fill="x", pady=(10, 0))
+        self.mem_label = ctk.CTkLabel(r2, text=f"Eris remembers {mem_n} thing{'s' if mem_n != 1 else ''}",
+                                      font=font(12), text_color=T.MUTED)
+        self.mem_label.pack(side="left")
+        ctk.CTkButton(r2, text="Forget everything", width=140, corner_radius=14,
+                      fg_color=T.CARD_2, hover_color=T.ACCENT_DIM,
+                      command=self._forget).pack(side="right")
 
         foot = ctk.CTkFrame(self, fg_color="transparent")
         foot.pack(fill="x", padx=20, pady=12)
@@ -643,6 +676,13 @@ class SettingsWindow(ctk.CTkToplevel):
         config.VOICE_RATE = int(round(self.rate.get()))
         self.app.eris.voice.stop()
         self.app.eris.voice.say(PREVIEW, force=True)
+
+    def _forget(self):
+        settings.forget_all()
+        self.app.eris.brain.reset()
+        self.app.avatar.load()
+        self.mem_label.configure(text="Eris remembers 0 things")
+        self.app.log("info", "Eris forgot everything, including her picture.")
 
     def _timeout_text(self, v):
         self.timeout_label.configure(text=f"Box hides itself after {int(float(v))} seconds")

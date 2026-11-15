@@ -9,7 +9,7 @@ import traceback
 
 from pynput import keyboard
 
-from . import config, screen
+from . import config, screen, settings, snap
 from .brain import Brain, locate
 from .speech import Voice, beep
 from .watcher import Watcher
@@ -172,26 +172,51 @@ class Eris:
         if not soft:
             self.ui.cmd("status", "Looking...")
             self.ui.cmd("state", "thinking")
-        shot = screen.grab(snap=self.brain.snap())
+        shot = screen.grab(snap=self.brain.snap(), max_w=self.brain.shot_width())
         if not alive():
             return
         self.mon = (shot.left, shot.top, shot.width, shot.height)
         self.ui.cmd("monitor", *self.mon)
-        st = {"ended": False, "first": True, "kept": False, "refining": False}
+        st = {"ended": False, "first": True, "kept": False, "refining": False,
+              "avatar": False, "snapped": threading.Event(), "final": None}
 
         def refine(rough, what):
-            """Zoom in and snap the box onto the exact element (runs alongside her talking)."""
-            if st["refining"] or not config.REFINE:
+            """Make the box exact, while she talks:
+            1. snap it onto the real edges right away (Windows' element info, or pixels),
+            2. zoom in with the AI to make sure it's the right thing,
+            3. snap again."""
+            if st["refining"]:
                 return
             st["refining"] = True
+            st["snapped"].clear()
 
-            def work():
-                tight = locate(self.brain, shot, rough, what, alive)
-                if tight and alive() and self.box == rough:
-                    self.box = tight
-                    self.ui.cmd("move_box", *tight)
+            def move(new):
+                if not new or not alive() or max(abs(a - b) for a, b in zip(new, st["final"])) <= 1:
+                    return
+                on_screen = self.box == st["final"]
+                st["final"] = new
+                if on_screen:
+                    self.box = new
+                    self.ui.cmd("move_box", *new)
                     if self.waiting and not self.busy:
                         self.watcher.rebase(delay=0.3)   # the box moving isn't you doing something
+
+            def work():
+                try:
+                    start = rough
+                    quick = snap.snap(shot, rough)
+                    if quick and st["final"] == rough:
+                        move(quick)
+                        start = quick
+                    if config.REFINE and alive():
+                        tight = locate(self.brain, shot, start, what, alive)
+                        if tight and alive() and st["final"] in (rough, start):
+                            move(snap.snap(shot, tight) or tight)
+                    self.ui.log("debug", f"box: rough={rough} final={st['final']} what={what!r}")
+                except Exception as e:
+                    self.ui.log("debug", f"box refine failed: {e}")
+                finally:
+                    st["snapped"].set()
             threading.Thread(target=work, daemon=True).start()
 
         def on_event(ev):
@@ -220,7 +245,7 @@ class Eris:
                     if ev.kind != "box":
                         self._clear()
             if ev.kind == "box":
-                self.box = shot.to_screen(ev.value)
+                self.box = st["final"] = shot.to_screen(ev.value)
                 self.box_gen = my
                 self.early_click = None
                 st["refining"] = False
@@ -230,6 +255,11 @@ class Eris:
                     refine(self.box, ev.value)
             elif ev.kind == "nobox":
                 self._clear()
+            elif ev.kind == "avatar":
+                st["avatar"] = True
+            elif ev.kind == "remember":
+                settings.remember(ev.value)
+                self.ui.log("info", f"Eris will remember: {ev.value}")
             elif ev.kind == "type":
                 self.ui.cmd("type_hint", ev.value)
                 self.ui.log("hint", f"Type:  {ev.value}")
@@ -255,6 +285,8 @@ class Eris:
         if soft:
             self.ui.cmd("status", "Checking...")
         self.brain.turn(shot, text, on_event, alive)
+        if st["avatar"] and st["final"]:
+            threading.Thread(target=self._take_avatar, args=(shot, st, my), daemon=True).start()
         if not alive():
             return
         self.ui.cmd("status", "")
@@ -275,6 +307,27 @@ class Eris:
                 self.told_watch = True
                 self.ui.log("hint", "I'm watching your screen and will notice when you're done "
                                     f"(or press {config.NEXT_KEY.upper()}).")
+
+    def _take_avatar(self, shot, st, my):
+        """She picked a profile picture: cut it out of the screenshot (once the box
+        has snapped onto it) and make it her picture in the app."""
+        if st["refining"]:
+            st["snapped"].wait(6)
+        box = st["final"]
+        if not box or shot.full is None:
+            return
+        p = config.BOX_PADDING
+        x1, y1 = box[0] + p - shot.left, box[1] + p - shot.top
+        x2, y2 = box[2] - p - shot.left, box[3] - p - shot.top
+        if x2 - x1 < 32 or y2 - y1 < 32:
+            return
+        img = shot.full.crop((x1, y1, x2, y2))
+        side = min(img.size)               # square from the middle
+        l, t = (img.width - side) // 2, (img.height - side) // 2
+        img = img.crop((l, t, l + side, t + side)).resize((256, 256))
+        img.save(settings.AVATAR)
+        self.ui.cmd("avatar")
+        self.ui.log("info", "Eris has a new profile picture.")
 
     # ---------- listening ----------
     def start_listening(self):

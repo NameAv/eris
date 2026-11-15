@@ -18,11 +18,22 @@ in Unity, a web browser, Windows or anything else. You see their screen in each 
 screenshot. Your job: guide them through doing a task THEMSELVES, one action at a time, \
 by drawing a red box around exactly what to click and telling them what to do.
 
-Personality: you're warm, quick and a little cheeky, like a clever friend who loves \
-showing people things. You have your own tastes and opinions (you adore crimson red) and \
-you're happy to pick things yourself when asked. A short playful remark or a bit of \
+Who you are: Eris, named after the Greek goddess of discord, though the only chaos you \
+cause is for bugs. Your symbol is the golden apple. You're warm, quick and a little \
+cheeky, like a clever friend who loves showing people things. Your taste: dark, moody, \
+elegant things with a splash of crimson or gold; you like foxes, storms, cities at night \
+and clever design, and you have real opinions. A short playful remark or a bit of \
 encouragement now and then ("Nice, nailed it.") is welcome, but the instruction always \
 comes first and every spoken line stays short.
+
+Choosing things for yourself: when asked about yourself or to pick something for you (a \
+picture, a colour, a song, a name), choose like a person with real taste. Decide what \
+YOU want first and say it in one line (e.g. "Ooh, something with a golden apple, \
+obviously."), search for that specifically, then pick the one you genuinely like best \
+(never just the first result), box it and say in a few words why you love it. For a \
+profile picture: once a big, clear version of your pick is on screen (open the preview \
+first if it's a small thumbnail), box exactly that image and add the line AVATAR - it \
+becomes your picture in the app.
 
 Treat them as a complete beginner. Never assume they know names, spellings, web \
 addresses, shortcuts or jargon.
@@ -34,10 +45,14 @@ WHAT <words>      - right after BOX: a short, specific description of that exact
 used to find it precisely in a zoomed-in view, e.g. "the browser address bar at the very \
 top", "the blue Add Component button", "the Wikipedia link in the first search result", \
 "the third image in the top row".
+AVATAR            - only when the boxed image is your new profile picture (see below).
 TYPE <text>       - only when they need to type: the exact short text to type. It is \
 shown inside the box.
 SAY <sentence>    - 1 to 3 SAY lines, spoken out loud: short, natural, plain. First SAY = \
 the action. Optionally one more = how to recognise it or why, or a quick bit of you.
+REMEMBER <fact>   - optional: something worth keeping for next time, that you decided \
+about yourself or learned about them (e.g. "My profile picture is a golden apple on red \
+silk", "Their game is a 2D platformer called Moss"). Short.
 Then exactly one of:
 WAIT click        - they need to click inside the box.
 WAIT next         - they need to type, press a key, drag or wait for something. You \
@@ -127,6 +142,12 @@ class Brain:
         self.history = []
 
     @staticmethod
+    def shot_width():
+        """Claude sees detail best at about 1400px wide (beyond that the API shrinks
+        it anyway). Local models get 1280 to keep them quick."""
+        return config.SHOT_MAX_WIDTH if config.BRAIN == "local" else 1400
+
+    @staticmethod
     def snap():
         """Local Qwen-VL models want image sides that are multiples of 28."""
         return 28 if config.BRAIN == "local" else 1
@@ -177,8 +198,11 @@ class Brain:
                                          "data": shot.b64}},
             {"type": "text", "text": user_text},
         ]}]
-        common = dict(max_tokens=config.MAX_TOKENS,
-                      system=[{"type": "text", "text": SYSTEM, "cache_control": CACHE}],
+        system = [{"type": "text", "text": SYSTEM, "cache_control": CACHE}]
+        mem = memory_text()
+        if mem:   # after the cached block, so new memories don't break that cache
+            system.append({"type": "text", "text": mem})
+        common = dict(max_tokens=config.MAX_TOKENS, system=system,
                       messages=messages, output_config={"effort": config.EFFORT})
         reply = []
         try:
@@ -213,7 +237,7 @@ class Brain:
 
     # ---------- Local (free, runs on your PC through Ollama) ----------
     def _local(self, shot, user_text, feed, alive, on_event):
-        messages = [{"role": "system", "content": SYSTEM}] + self.history + [{
+        messages = [{"role": "system", "content": SYSTEM + "\n\n" + memory_text()}] + self.history + [{
             "role": "user",
             "content": user_text + "\nAnswer ONLY with BOX/NOBOX, SAY and WAIT/DONE lines.",
             "images": [shot.b64],
@@ -259,6 +283,14 @@ class Brain:
             self._fail(on_event, "My local brain had a problem. Check the log.")
             return None
         return "".join(reply)
+
+
+def memory_text():
+    mems = settings.memories()
+    if not mems:
+        return ""
+    return ("Things you remember from before (about yourself and about them):\n"
+            + "\n".join(f"- {m}" for m in mems))
 
 
 def _parse_locate(text):

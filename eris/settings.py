@@ -36,3 +36,32 @@ def save():
 
 def api_key():
     return config.API_KEY or os.environ.get("ANTHROPIC_API_KEY", "")
+
+
+# ---------- Eris's own memory and profile picture ----------
+MEMORY = folder() / "memory.json"
+AVATAR = folder() / "avatar.png"
+
+
+def memories():
+    try:
+        return [m for m in json.loads(MEMORY.read_text()) if isinstance(m, str)]
+    except (OSError, ValueError):
+        return []
+
+
+def remember(fact):
+    fact = " ".join(fact.split())[:200]
+    if not fact:
+        return
+    mems = [m for m in memories() if m.lower() != fact.lower()]
+    mems.append(fact)
+    MEMORY.write_text(json.dumps(mems[-40:], indent=2))
+
+
+def forget_all():
+    for f in (MEMORY, AVATAR):
+        try:
+            f.unlink()
+        except OSError:
+            pass

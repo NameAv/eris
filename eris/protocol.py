@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 @dataclass
 class Event:
-    kind: str            # "box" | "nobox" | "type" | "say" | "wait" | "done" | "keep" | "fail" | "what" | "none"
+    kind: str            # "box" | "nobox" | "type" | "say" | "wait" | "done" | "keep" | "fail" | "what" | "none" | "avatar" | "remember"
     value: object = None
 
 
@@ -48,6 +48,10 @@ def parse_line(line: str):
         return Event("done")
     if head == "KEEP":
         return Event("keep")
+    if head == "AVATAR":
+        return Event("avatar")
+    if head == "REMEMBER":
+        return Event("remember", rest) if rest else None
     if head == "WHAT":
         return Event("what", rest) if rest else None
     if head == "NONE":

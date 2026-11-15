@@ -1,3 +1,4 @@
+v1.2.0: Eris now watches your screen while helping and reacts to what you do. Shows exactly what to type, never asks for full web addresses, and points out the right search result.
 v1.1.1: F8 and clicks now work while you are in Unity or any other app.
 v1.1.0: New red look, red box fixed (now drawn as solid bars), natural voices (Ava, Sonia...), and a FREE brain option that runs on your PC.
 v1.0.1: Fixed install on the newest Python.

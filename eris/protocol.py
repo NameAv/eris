@@ -2,16 +2,19 @@
 
 Claude is told to answer in this exact shape:
     BOX x1 y1 x2 y2        (or NOBOX)  <- first line, so the box shows instantly
+    TYPE exact text                    <- optional: what to type, shown big on screen
     SAY one short sentence             <- spoken as soon as each line arrives
     SAY ...
     WAIT click | WAIT next | DONE      <- how this step ends
+or just:
+    KEEP                               <- (after an automatic look) nothing to add, keep waiting
 """
 from dataclasses import dataclass
 
 
 @dataclass
 class Event:
-    kind: str            # "box" | "nobox" | "say" | "wait" | "done"
+    kind: str            # "box" | "nobox" | "type" | "say" | "wait" | "done" | "keep"
     value: object = None
 
 
@@ -42,6 +45,10 @@ def parse_line(line: str):
         return Event("wait", "click" if mode.startswith("click") else "next")
     if head == "DONE":
         return Event("done")
+    if head == "KEEP":
+        return Event("keep")
+    if head == "TYPE":
+        return Event("type", rest.strip('"').strip("'")) if rest else None
     # Anything off-format: just say it, rather than lose it.
     return Event("say", line)
 

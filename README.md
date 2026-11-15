@@ -16,6 +16,10 @@ After that, just open **Eris** from the Desktop. No command window.
 
 - **Hold F8** (or hold the red *Hold to talk* button) and ask. Or type in the box.
 - Click inside the red box and Eris moves to the next step on her own.
+- **She watches while she helps.** When your screen changes (you typed, a page loaded, you
+  clicked something else) she takes a fresh look and carries on, or helps you get back on track.
+  Turn it off in Settings, then Guiding.
+- When you need to type something, she shows exactly what to type, big, next to the box.
 - **Next step / F9** is for steps that aren't a click (typing, dragging).
 - **Stop / F10** clears everything. **New task** makes her forget the last task.
 - **Active** switch: turn it off and Eris ignores the hotkeys.
@@ -57,6 +61,7 @@ If it can't connect, Eris switches to the built-in Windows voice by herself. Use
 - `eris/settings.py`: saves your settings to %APPDATA%\Eris
 - `eris/brain.py`: the prompt, plus the Claude and local (Ollama) brains
 - `eris/protocol.py`: parses `BOX / SAY / WAIT / DONE` lines as they stream in
+- `eris/watcher.py`: notices when your screen changes while she's waiting
 - `eris/overlay.py`: the red box (four solid bars plus a caption)
 - `eris/ears.py`: push-to-talk and speech-to-text
 - `eris/speech.py`: natural and Windows voices (interruptible)

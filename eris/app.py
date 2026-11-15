@@ -110,6 +110,7 @@ class App(ctk.CTk):
         self.log_file = settings.folder() / "eris.log"
         self.bubbles = []
         self.last_eris = None
+        self._rects = []
 
         self.overlay = Overlay(self)
         self._build()
@@ -131,7 +132,23 @@ class App(ctk.CTk):
     def log(self, who, text):
         self.q.put(("log", (who, text)))
 
+    def window_rects(self):
+        """Screen rects of Eris's own windows (the watcher ignores them)."""
+        return self._rects
+
+    def _cache_rects(self):
+        rects = []
+        for w in (self, getattr(self, "_settings", None)):
+            try:
+                if w is not None and w.winfo_exists() and w.state() == "normal":
+                    x, y = w.winfo_rootx(), w.winfo_rooty()
+                    rects.append((x - 40, y - 50, x + w.winfo_width() + 20, y + w.winfo_height() + 20))
+            except Exception:
+                pass
+        self._rects = rects
+
     def _pump(self):
+        self._cache_rects()
         try:
             while True:
                 name, args = self.q.get_nowait()
@@ -264,7 +281,15 @@ class App(ctk.CTk):
         self.welcome_label.configure(wraplength=w + 40)
 
     def _scroll_end(self):
-        self.after(20, lambda: self.chat._parent_canvas.yview_moveto(1.0))
+        def go():
+            self.chat.update_idletasks()
+            c = self.chat._parent_canvas
+            box = c.bbox("all")
+            if box:   # keep the scrollable area in sync with the messages
+                c.configure(scrollregion=(0, 0, box[2], max(box[3], c.winfo_height())))
+            c.yview_moveto(1.0)
+        self.after(20, go)
+        self.after(150, go)   # again once the new bubble has its final size
 
     def _bubble(self, row, text, bg):
         return ctk.CTkLabel(row, text=text, fg_color=bg, corner_radius=16, text_color=T.TEXT,
@@ -492,7 +517,7 @@ class SettingsWindow(ctk.CTkToplevel):
             self.keys[name] = m
 
         # ---- Red box ----
-        c = self._card(body, "Red box")
+        c = self._card(body, "Guiding")
         self.timeout_label = self._label(c, "")
         self.timeout = ctk.CTkSlider(c, from_=5, to=60, number_of_steps=11, button_color=T.ACCENT,
                                      button_hover_color=T.GLOW, progress_color=T.ACCENT,
@@ -500,6 +525,10 @@ class SettingsWindow(ctk.CTkToplevel):
         self.timeout.set(config.BOX_TIMEOUT)
         self._timeout_text(config.BOX_TIMEOUT)
         self.timeout.pack(fill="x", pady=(4, 8))
+        self.watch = self._switch(c, "Watch what I do and react", config.WATCH)
+        self._muted(c, "While she's waiting, Eris notices when your screen changes (you typed, "
+                       "a page loaded, you clicked something else) and helps from there. "
+                       "Uses a little more AI.")
         ctk.CTkButton(c, text="Test the red box", corner_radius=14, fg_color=T.CARD_2,
                       hover_color=T.BORDER, command=self._test_box).pack(fill="x")
         self._muted(c, "Draws the box around this window for 3 seconds.")
@@ -641,6 +670,7 @@ class SettingsWindow(ctk.CTkToplevel):
             setattr(config, name, m.get().lower())
         config.BOX_TIMEOUT = int(round(self.timeout.get()))
         config.PANEL_ON_TOP = bool(self.on_top.get())
+        config.WATCH = bool(self.watch.get())
         settings.save()
         self._restore = None
         self.app.attributes("-topmost", config.PANEL_ON_TOP)

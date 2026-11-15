@@ -78,6 +78,7 @@ class Overlay:
     def _keep_on_top(self):
         for p in self.pieces:
             p.attributes("-topmost", True)
+            p.lift()
         self.master.after(1500, self._keep_on_top)
 
     @staticmethod
@@ -102,6 +103,8 @@ class Overlay:
         self._place(bottom, x1 - t, y2, x2 - x1 + 2 * t, t)
         self._place(left, x1 - t, y1, t, y2 - y1)
         self._place(right, x2, y1, t, y2 - y1)
+        for p in self.bars + [self.cap]:
+            p.lift()
         self._flash()
         if caption:
             self.caption(caption)

@@ -12,6 +12,13 @@ from pynput import keyboard
 from . import config, screen
 from .brain import Brain
 from .speech import Voice, beep
+from .watcher import Watcher
+
+WATCH_PROMPT = ("(Automatic look: my screen changed while you were waiting.) Here's my screen "
+                "now. If the step is done, give the next step, or DONE if the task is finished. "
+                "If I'm still partway through or nothing important changed, reply with just KEEP. "
+                "If I did something different, briefly tell me and guide me back.")
+MAX_LOOKS_PER_TASK = 30
 
 NEXT_STEP_PROMPT = ("I did that step. Here's my screen now. Check it worked, then give the "
                     "next step, or DONE if the task is finished.")
@@ -32,7 +39,13 @@ class Eris:
         self.talking = False
         self.lock = threading.Lock()
         self.inbox = queue.Queue()
+        self._busy = 0
+        self.mon = None          # monitor of the last screenshot (left, top, w, h)
+        self.auto_looks = 0      # automatic looks since the last new instruction
+        self.task_looks = 0      # automatic looks this task (safety cap)
+        self.told_watch = False
         threading.Thread(target=self._input_worker, daemon=True).start()
+        self.watcher = Watcher(self)
         self.load_ears()
 
     # ---------- speech model ----------
@@ -95,6 +108,7 @@ class Eris:
         self.voice.stop()
         self._clear()
         self.steps = 0
+        self.auto_looks = self.task_looks = 0
         my = self._new_gen()
         threading.Thread(target=self._turn_safe, args=(my, text), daemon=True).start()
 
@@ -105,6 +119,7 @@ class Eris:
         self.voice.stop()
         self._clear()
         self.steps += 1
+        self.auto_looks = 0
         my = self._new_gen()
         if self.steps >= config.MAX_STEPS:
             msg = "That's a lot of steps, let's pause here. Ask me again if you're stuck."
@@ -118,60 +133,109 @@ class Eris:
                 self._turn_safe(my, NEXT_STEP_PROMPT)
         threading.Thread(target=later, daemon=True).start()
 
-    def _turn_safe(self, my, text):
+    def auto_look(self):
+        """Called by the watcher when the screen changed while waiting."""
+        if not (self.active and self.waiting) or self.busy:
+            return
+        if self.task_looks >= MAX_LOOKS_PER_TASK:
+            return
+        self.auto_looks += 1
+        self.task_looks += 1
+        my = self._new_gen()
+        threading.Thread(target=self._turn_safe, args=(my, WATCH_PROMPT, True), daemon=True).start()
+
+    @property
+    def busy(self):
+        return self._busy > 0
+
+    def _turn_safe(self, my, text, soft=False):
+        with self.lock:
+            self._busy += 1
         try:
-            self._turn(my, text)
+            self._turn(my, text, soft)
         except Exception as e:
             self.ui.log("error", f"Something broke: {e}")
             self.ui.log("debug", traceback.format_exc())
             self.ui.cmd("status", "")
             self.ui.cmd("state", "ready")
+        finally:
+            with self.lock:
+                self._busy -= 1
 
-    def _turn(self, my, text):
+    def _turn(self, my, text, soft=False):
+        """One step. soft=True is an automatic look: the current box stays up
+        unless the brain has something new to say (it can reply KEEP)."""
         alive = lambda: my == self.gen
-        self.ui.cmd("status", "Looking...")
-        self.ui.cmd("state", "thinking")
+        if not soft:
+            self.ui.cmd("status", "Looking...")
+            self.ui.cmd("state", "thinking")
         shot = screen.grab(snap=self.brain.snap())
         if not alive():
             return
-        self.ui.cmd("monitor", shot.left, shot.top, shot.width, shot.height)
-        self.caption = ""
-        ended = {"v": False}
+        self.mon = (shot.left, shot.top, shot.width, shot.height)
+        self.ui.cmd("monitor", *self.mon)
+        st = {"ended": False, "first": True, "kept": False, "caption": ""}
 
         def on_event(ev):
-            if not alive():
+            if not alive() or st["kept"]:
                 return
+            if st["first"]:
+                st["first"] = False
+                if ev.kind == "keep":
+                    st["kept"] = True
+                    return
+                if soft:   # she has something new: drop the old step
+                    self.waiting = None
+                    self.auto_looks = 0
+                    self.voice.stop()
+                    if ev.kind != "box":
+                        self._clear()
             if ev.kind == "box":
                 self.box = shot.to_screen(ev.value)
                 self.ui.cmd("box", *self.box, "")
             elif ev.kind == "nobox":
                 self._clear()
+            elif ev.kind == "type":
+                st["caption"] = f"Type:   {ev.value}"
+                self.ui.cmd("caption", st["caption"])
+                self.ui.log("hint", f"Type:  {ev.value}")
             elif ev.kind == "say":
                 self.ui.cmd("status", "")
                 self.ui.cmd("state", "guiding")
                 self.ui.log("eris", ev.value)
                 self.voice.say(ev.value)
-                if not self.caption:
-                    self.caption = ev.value
+                if not st["caption"]:
+                    st["caption"] = ev.value
                     self.ui.cmd("caption", ev.value)
-            elif ev.kind == "wait":
-                ended["v"] = True
-                self.waiting = ev.value if self.box or ev.value == "next" else "next"
-                if self.waiting == "next":
-                    self.ui.log("hint", f"Press {config.NEXT_KEY.upper()} or Next step when done.")
+            elif ev.kind in ("wait", "keep"):
+                st["ended"] = True
+                mode = ev.value if ev.kind == "wait" else "next"
+                self.waiting = mode if self.box or mode == "next" else "next"
             elif ev.kind == "done":
-                ended["v"] = True
+                st["ended"] = True
                 self.waiting = None
                 self.box = None
                 self.ui.cmd("clear_box")
                 self.ui.cmd("state", "ready")
                 self.steps = 0
 
+        if soft:
+            self.ui.cmd("status", "Checking...")
         self.brain.turn(shot, text, on_event, alive)
-        if alive():
-            self.ui.cmd("status", "")
-            if not ended["v"]:
-                self.waiting = "next"
+        if not alive():
+            return
+        self.ui.cmd("status", "")
+        if st["kept"]:
+            self.watcher.rebase(delay=0.3)   # nothing new: keep watching from here
+            return
+        if not st["ended"]:
+            self.waiting = "next"
+        if self.waiting:
+            self.watcher.rebase()
+            if self.waiting == "next" and not soft and not self.told_watch:
+                self.told_watch = True
+                self.ui.log("hint", "I'm watching your screen and will notice when you're done "
+                                    f"(or press {config.NEXT_KEY.upper()}).")
 
     # ---------- listening ----------
     def start_listening(self):
@@ -252,6 +316,8 @@ class Eris:
     def _handle_press(self, key):
         if not self.active:
             return
+        if key == keyboard.Key.enter and self.waiting:
+            self.watcher.nudge()
         if self._is(key, config.TALK_KEY):
             self.start_listening()
         elif self._is(key, config.NEXT_KEY):

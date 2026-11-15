@@ -39,6 +39,7 @@ VOICE_ENGINE = "natural"   # "natural" (free neural voice, needs internet) or "w
 VOICE_NAME = "en-US-AvaNeural"
 VOICE_RATE = 1          # Windows voice speed: -10 (slow) .. 10 (fast)
 
+WATCH = True            # watch the screen while waiting and react to what you do
 PANEL_ON_TOP = False    # keep the Eris window above other windows
 
 # --- Updates (GitHub "owner/repo"; the app checks it on startup) ---

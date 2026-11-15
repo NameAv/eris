@@ -1,0 +1,1 @@
+v1.0: Eris app window, settings, and auto-updates.

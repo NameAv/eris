@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+*.new
+eris/eris.ico
+*.zip

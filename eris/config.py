@@ -52,6 +52,7 @@ PANEL_ON_TOP = False    # keep the Eris window above other windows
 # --- Updates (GitHub "owner/repo"; the app checks it on startup) ---
 UPDATE_REPO = "nameAv/eris"
 UPDATE_BRANCH = "main"
+UPDATES = "ask"         # "ask": check on startup and show the Update button. "off": only when you check
 
 # --- Eris herself ---
 VIBE = "friendly"       # "calm", "friendly" or "cheeky"

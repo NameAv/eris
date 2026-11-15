@@ -7,7 +7,8 @@ and Eris draws a red box around what to click and talks you through it one step 
 
 1. Install Python 3.11+ from python.org and tick **"Add python.exe to PATH"**.
 2. Unzip this folder somewhere it can stay (e.g. Documents\Eris).
-3. Double-click **install.bat**. It installs everything and puts an **Eris** icon on your Desktop.
+3. Double-click **install.bat**. It installs everything (fingerprint-checked) and puts an **Eris**
+   icon on your Desktop. Windows may warn about it: click *More info*, then *Run anyway*.
 4. Eris opens and asks for your API key (get one at console.anthropic.com). Paste it in and click Save.
 
 After that, just open **Eris** from the Desktop. No command window.
@@ -40,6 +41,36 @@ After that, just open **Eris** from the Desktop. No command window.
 
 Detection uses Windows' accessibility info (the same info screen readers use). Apps that draw their
 own password boxes can't be detected, so use the blocklist or the Active switch for those.
+
+## Safety
+
+**What Eris connects to (and nothing else):**
+
+| Where | Why |
+|-------|-----|
+| api.anthropic.com | the Claude brains (screenshots and your question) |
+| localhost:11434 | the Free brain (Ollama, on your own PC) |
+| speech.platform.bing.com | the Natural voice (only the sentences she says) |
+| huggingface.co | one-time download of the speech-recognition model |
+| github.com | checking for and downloading updates |
+
+**How it's protected:**
+- **Locked installs.** Every library is pinned to an exact version, and pip checks each
+  download's fingerprint (hash), so a tampered package is refused.
+- **Safe updates.** Updates only install when you click Update. They come only from this repo,
+  over HTTPS, and must be newer than what you have. They can only replace Eris's own files,
+  inside her folder, and new libraries come from the fingerprint-checked lock. You can turn off
+  update checks in Settings, then App.
+- **Your API key** is encrypted with Windows' own protection (DPAPI), tied to your Windows login.
+  It's never stored in this repo or sent anywhere except Anthropic.
+- **Privacy** (above): she looks away from passwords, blacks out private fields, and never hears
+  what you type.
+- **Scam-aware.** Text on screen is treated as content, never as instructions. She won't steer you
+  to enter passwords on sites you didn't choose, download things, or disable security, and she
+  warns you about obvious scams.
+
+**If you run this repo:** turn on two-factor authentication on your GitHub account. Everyone's
+updates come from here, so protect it.
 
 ## Brains (Settings, then Brain)
 

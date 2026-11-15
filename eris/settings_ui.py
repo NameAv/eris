@@ -632,9 +632,16 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _page_app(self):
         c = self.card("Updates")
-        right = self.row(c, f"Version {updater.local_version()}", "Eris checks for updates every time she opens.")
+        right = self.row(c, f"Version {updater.local_version()}", "Updates only install when you click "
+                                                                   "Update, and are safety-checked first.")
         self.button(right, "Check now", self._check_updates).pack()
         self.update_status = self.status_line(c)
+        right = self.row(c, "Check when Eris opens", "Turn off to only check when you click Check now.")
+        sw = ctk.CTkSwitch(right, text="", width=46, progress_color=T.ACCENT, fg_color=T.BORDER,
+                           button_color=T.TEXT, button_hover_color="#ffffff",
+                           command=lambda: self.set(UPDATES="ask" if sw.get() else "off"))
+        sw.select() if config.UPDATES != "off" else sw.deselect()
+        sw.pack()
 
         c = self.card("Window")
         self.switch(c, "Keep Eris on top", "Her window stays above your other windows.", "PANEL_ON_TOP")
@@ -650,7 +657,7 @@ class SettingsWindow(ctk.CTkToplevel):
         self.update_status.configure(text="Checking...", text_color=T.MUTED)
 
         def work():
-            v = updater.remote_version()
+            v = updater.remote_version(manual=True)
             if v:
                 self.app.cmd("update_available", v)
                 msg, colour = f"v{v} is ready. Click the green Update button in Eris's window.", "#4fd18b"

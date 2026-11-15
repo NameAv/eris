@@ -1,4 +1,5 @@
 """The Eris window: chat bubbles, talk button, settings. Crimson on near-black."""
+import os
 import queue
 import sys
 import threading
@@ -149,6 +150,7 @@ class App(ctk.CTk):
                 elif name == "state":
                     self._set_state(*args)
                 elif name == "update_available":
+                    self.update_version = args[0]
                     self.update_btn.configure(text=f"Update to v{args[0]}")
                     self.update_btn.pack(side="right", padx=(0, 8))
                 elif name == "restart":
@@ -290,6 +292,8 @@ class App(ctk.CTk):
 
     def _append(self, who, text):
         try:
+            if self.log_file.exists() and self.log_file.stat().st_size > 2_000_000:
+                os.replace(self.log_file, self.log_file.with_suffix(".old.log"))   # cap the log
             with open(self.log_file, "a", encoding="utf-8") as f:
                 f.write(f"{time.strftime('%H:%M:%S')} [{who}] {text}\n")
         except OSError:
@@ -365,7 +369,7 @@ class App(ctk.CTk):
 
     # ---------- updates ----------
     def check_updates(self, manual=False):
-        v = updater.remote_version()
+        v = updater.remote_version(manual)
         if v:
             notes = updater.changes()
             self.cmd("update_available", v)
@@ -381,7 +385,7 @@ class App(ctk.CTk):
 
         def work():
             try:
-                if updater.install_update(self.log):
+                if updater.install_update(self.log, expected=getattr(self, "update_version", None)):
                     self.log("info", "Updated! Restarting...")
                     self.cmd("restart")
                     return

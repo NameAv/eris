@@ -12,8 +12,16 @@ where py >nul 2>nul || set PY=python
 )
 if not exist .venv %PY% -m venv .venv
 .venv\Scripts\python -m pip install --upgrade pip -q
-.venv\Scripts\python -m pip install -r requirements.txt && .venv\Scripts\python -m pip install --no-deps -r requirements-nodeps.txt
-if errorlevel 1 ( echo. & echo  Install failed - copy the error above and send it to Claude. & pause & exit /b 1 )
+rem Locked install: exact versions, and pip checks every download's fingerprint (hash).
+.venv\Scripts\python -m pip install --require-hashes -r requirements.lock && .venv\Scripts\python -m pip install --require-hashes --no-deps -r requirements-nodeps.lock
+if errorlevel 1 (
+  echo.
+  echo  The safe, locked install didn't work on this PC ^(often a very new Python version^).
+  choice /M "  Install the latest versions instead (no fingerprint checks)"
+  if errorlevel 2 ( echo  Okay, stopped. Copy the error above and send it to Claude. & pause & exit /b 1 )
+  .venv\Scripts\python -m pip install -r requirements.txt && .venv\Scripts\python -m pip install --no-deps -r requirements-nodeps.txt
+  if errorlevel 1 ( echo. & echo  Install failed - copy the error above and send it to Claude. & pause & exit /b 1 )
+)
 .venv\Scripts\python -m eris.icon >nul
 powershell -NoProfile -Command "$d=[Environment]::GetFolderPath('Desktop'); $s=(New-Object -ComObject WScript.Shell).CreateShortcut(\"$d\Eris.lnk\"); $s.TargetPath='%CD%\.venv\Scripts\pythonw.exe'; $s.Arguments='-m eris'; $s.WorkingDirectory='%CD%'; $s.IconLocation='%CD%\eris\eris.ico'; $s.Save()"
 echo.

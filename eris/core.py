@@ -2,6 +2,7 @@
 
 Talks to the window only through ui.cmd(...) and ui.log(...), both thread-safe.
 """
+import queue
 import threading
 import time
 import traceback
@@ -30,6 +31,8 @@ class Eris:
         self.steps = 0
         self.talking = False
         self.lock = threading.Lock()
+        self.inbox = queue.Queue()
+        threading.Thread(target=self._input_worker, daemon=True).start()
         self.load_ears()
 
     # ---------- speech model ----------
@@ -208,8 +211,34 @@ class Eris:
         threading.Thread(target=work, daemon=True).start()
 
     # ---------- global input hooks ----------
+    # Windows silently removes a keyboard/mouse hook if it takes too long to
+    # return, after which hotkeys only work while Eris's own window is in front.
+    # So the hooks only drop a note in a queue; this worker does the real work.
+    def _input_worker(self):
+        while True:
+            kind, a, b = self.inbox.get()
+            try:
+                if kind == "click":
+                    self._handle_click(a, b)
+                elif kind == "press":
+                    self._handle_press(a)
+                elif kind == "release":
+                    self._handle_release(a)
+            except Exception as e:
+                self.ui.log("error", f"Input problem: {e}")
+
     def on_click(self, x, y, button, pressed):
-        if not pressed or self.waiting != "click" or not self.box:
+        if pressed and self.waiting == "click":
+            self.inbox.put(("click", x, y))
+
+    def on_press(self, key):
+        self.inbox.put(("press", key, None))
+
+    def on_release(self, key):
+        self.inbox.put(("release", key, None))
+
+    def _handle_click(self, x, y):
+        if self.waiting != "click" or not self.box:
             return
         x1, y1, x2, y2 = self.box
         s = config.CLICK_SLOP
@@ -220,7 +249,7 @@ class Eris:
     def _is(key, name):
         return key == getattr(keyboard.Key, name.lower(), None)
 
-    def on_press(self, key):
+    def _handle_press(self, key):
         if not self.active:
             return
         if self._is(key, config.TALK_KEY):
@@ -230,6 +259,6 @@ class Eris:
         elif self._is(key, config.CANCEL_KEY):
             self.cancel()
 
-    def on_release(self, key):
+    def _handle_release(self, key):
         if self._is(key, config.TALK_KEY):
             self.stop_listening()

@@ -1,3 +1,4 @@
+v1.1.1: F8 and clicks now work while you are in Unity or any other app.
 v1.1.0: New red look, red box fixed (now drawn as solid bars), natural voices (Ava, Sonia...), and a FREE brain option that runs on your PC.
 v1.0.1: Fixed install on the newest Python.
 v1.0: Eris app window, settings, and auto-updates.

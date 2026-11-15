@@ -47,6 +47,7 @@ class Eris:
         self.told_watch = False
         self.early_click = None  # gen of a box you clicked before she finished talking
         self.box_gen = None
+        self.hotkeys_paused = False   # while you're choosing a new key in Settings
         self.pre_shot = None     # (token, time, Shot) taken when you let go of the talk key
         self.pre_token = None
         threading.Thread(target=self._input_worker, daemon=True).start()
@@ -430,7 +431,7 @@ class Eris:
         everything else you type are dropped right here and never stored."""
         if not isinstance(key, keyboard.Key):
             return False
-        return key == keyboard.Key.enter or key.name in (
+        return key == keyboard.Key.enter or getattr(key, "name", "") in (
             config.TALK_KEY.lower(), config.NEXT_KEY.lower(), config.CANCEL_KEY.lower())
 
     def on_press(self, key):
@@ -458,7 +459,7 @@ class Eris:
         return key == getattr(keyboard.Key, name.lower(), None)
 
     def _handle_press(self, key):
-        if not self.active:
+        if not self.active or self.hotkeys_paused:
             return
         if key == keyboard.Key.enter and self.waiting:
             self.watcher.nudge()
@@ -470,5 +471,7 @@ class Eris:
             self.cancel()
 
     def _handle_release(self, key):
+        if self.hotkeys_paused:
+            return
         if self._is(key, config.TALK_KEY):
             self.stop_listening()

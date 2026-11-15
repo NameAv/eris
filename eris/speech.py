@@ -46,11 +46,12 @@ class Voice:
         threading.Thread(target=self._sapi_loop, daemon=True).start()
 
     # ---------- public ----------
-    def say(self, text: str, force=False):
+    def say(self, text: str, force=False, voice=None):
+        """voice: a specific natural voice for this line (used by the preview button)."""
         if not (config.VOICE_ON or force):
             return
         if self._natural():
-            self.text_q.put((self.gen, text))
+            self.text_q.put((self.gen, text, voice))
         else:
             self.sapi_q.put(("say", text))
 
@@ -112,7 +113,7 @@ class Voice:
         loop = asyncio.new_event_loop()
         n = 0
         while True:
-            g, text = self.text_q.get()
+            g, text, voice = self.text_q.get()
             if g != self.gen:
                 continue
             if time.time() < self.natural_off_until:   # already queued, but server is down
@@ -123,7 +124,7 @@ class Voice:
             try:
                 import edge_tts
                 rate = f"{int(config.VOICE_RATE) * 6:+d}%"
-                comm = edge_tts.Communicate(text, config.VOICE_NAME, rate=rate)
+                comm = edge_tts.Communicate(text, voice or config.VOICE_NAME, rate=rate)
                 loop.run_until_complete(asyncio.wait_for(comm.save(path), 6))
                 self.audio_q.put((g, path))
             except Exception as e:

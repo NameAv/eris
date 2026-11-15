@@ -19,49 +19,13 @@ from pynput import keyboard, mouse
 
 from . import config, settings, updater
 from . import theme as T
-from .brain import local_models
+from .theme import font, tint_titlebar
 from .core import Eris
 from .overlay import Overlay
-from .speech import PREVIEW, VOICES
 
-FKEYS = [f"f{i}" for i in range(1, 13)]
 OVERLAY_CMDS = {"box", "move_box", "type_hint", "caption", "clear_box", "status", "monitor"}
 SUGGESTIONS = ["How do I add a Rigidbody?", "How do I make a new C# script?",
                "Where do I change the camera background?"]
-BRAINS = {  # segmented label -> (config value, description)
-    "Best": ("claude", "Claude Opus. Smartest and most accurate. About 2 cents per step."),
-    "Cheap": ("claude-cheap", "Claude Haiku. About 40x cheaper (5 dollars lasts thousands "
-                              "of steps), a bit less precise."),
-    "Free": ("local", "Runs on your own PC with Ollama. Totally free, no key. Needs a decent "
-                      "graphics card, and it's less smart than Claude."),
-}
-
-
-def font(size=13, weight="normal"):
-    return ctk.CTkFont(family=T.FONT, size=size, weight=weight)
-
-
-def tint_titlebar(win):
-    """Dark crimson-black title bar on Windows 11 so the window looks seamless."""
-    if sys.platform != "win32":
-        return
-    try:
-        import ctypes
-        from ctypes import wintypes
-        u32 = ctypes.windll.user32
-        u32.GetParent.restype = wintypes.HWND
-        hwnd = u32.GetParent(win.winfo_id())
-        dwm = ctypes.windll.dwmapi
-        on = ctypes.c_int(1)
-        dwm.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(on), 4)          # dark mode
-        r, g, b = (int(T.BG[i:i + 2], 16) for i in (1, 3, 5))
-        caption = ctypes.c_int(r | g << 8 | b << 16)
-        dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(caption), 4)     # title bar colour
-        r, g, b = (int(T.ACCENT[i:i + 2], 16) for i in (1, 3, 5))
-        border = ctypes.c_int(r | g << 8 | b << 16)
-        dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(border), 4)      # crimson outline
-    except Exception:
-        pass
 
 
 class Avatar(tk.Canvas):
@@ -427,335 +391,31 @@ class App(ctk.CTk):
         threading.Thread(target=work, daemon=True).start()
 
     # ---------- settings ----------
+    def on_settings_changed(self, keys):
+        """Apply a setting the moment it changes (the settings window saves instantly)."""
+        keys = set(keys)
+        if "PANEL_ON_TOP" in keys:
+            self.attributes("-topmost", bool(config.PANEL_ON_TOP))
+        if keys & {"TALK_KEY", "NEXT_KEY", "CANCEL_KEY"}:
+            self._update_hint()
+            self._set_state("ready")
+        if "BRAIN" in keys:
+            self._set_state("ready")
+            if config.BRAIN == "local":
+                threading.Thread(target=self.eris.brain.prewarm, daemon=True).start()
+        if "WHISPER_MODEL" in keys:
+            self.eris.load_ears()
+        if keys & {"VOICE_NAME", "VOICE_ENGINE"}:
+            threading.Thread(target=self.eris.voice.prepare_acks, daemon=True).start()
+        if "VOICE_ON" in keys and not config.VOICE_ON:
+            self.eris.voice.stop()
+
     def open_settings(self):
         if getattr(self, "_settings", None) and self._settings.winfo_exists():
             self._settings.focus()
             return
+        from .settings_ui import SettingsWindow
         self._settings = SettingsWindow(self)
-
-
-class SettingsWindow(ctk.CTkToplevel):
-    def __init__(self, app: App):
-        super().__init__(app, fg_color=T.BG)
-        self.app = app
-        self._restore = None
-        self.title("Eris settings")
-        self.geometry("460x700")
-        self.minsize(420, 500)
-        self.after(150, self.lift)
-        self.after(150, self.focus)
-        self.after(200, lambda: tint_titlebar(self))
-
-        ctk.CTkLabel(self, text="Settings", font=font(22, "bold"), text_color=T.TEXT
-                     ).pack(anchor="w", padx=20, pady=(16, 4))
-        body = ctk.CTkScrollableFrame(self, fg_color="transparent",
-                                      scrollbar_button_color=T.BORDER)
-        body.pack(fill="both", expand=True, padx=10)
-
-        # ---- Brain ----
-        c = self._card(body, "Brain")
-        self.brain = self._seg(c, list(BRAINS), command=self._brain_changed)
-        self.brain.set(next((k for k, v in BRAINS.items() if v[0] == config.BRAIN), "Best"))
-        self.brain_desc = self._muted(c, "")
-        self.claude_box = ctk.CTkFrame(c, fg_color="transparent")
-        self._label(self.claude_box, "API key")
-        self.key = ctk.CTkEntry(self.claude_box, show="•", placeholder_text="sk-ant-...",
-                                fg_color=T.CARD_2, border_color=T.BORDER, height=36)
-        self.key.insert(0, config.API_KEY)
-        self.key.pack(fill="x")
-        self._link(self.claude_box, "Get a key at console.anthropic.com",
-                   "https://console.anthropic.com/settings/keys")
-        self._label(self.claude_box, "Thinking: low is fastest, high is most careful")
-        self.effort = self._seg(self.claude_box, ["low", "medium", "high"])
-        self.effort.set(config.EFFORT)
-        self.fast = self._switch(self.claude_box, "Fast mode (Best only, quicker, costs 2x)",
-                                 config.FAST_MODE)
-        self.local_box = ctk.CTkFrame(c, fg_color="transparent")
-        self._muted(self.local_box, "One-time setup:\n1. Install Ollama (link below) and open it.\n"
-                                    "2. Open Command Prompt and run the command below.\n"
-                                    "3. Click Test.")
-        self._link(self.local_box, "Download Ollama", "https://ollama.com/download")
-        cmd_row = ctk.CTkFrame(self.local_box, fg_color=T.CARD_2, corner_radius=10)
-        cmd_row.pack(fill="x", pady=6)
-        self.cmd_label = ctk.CTkLabel(cmd_row, text="", text_color=T.TEXT,
-                                      font=ctk.CTkFont(family="Consolas", size=13))
-        self.cmd_label.pack(side="left", padx=10, pady=6)
-        ctk.CTkButton(cmd_row, text="Copy", width=56, height=26, corner_radius=13,
-                      fg_color=T.ACCENT_DIM, hover_color=T.ACCENT,
-                      command=self._copy_cmd).pack(side="right", padx=6)
-        self._label(self.local_box, "Model")
-        self.local_model = ctk.CTkEntry(self.local_box, fg_color=T.CARD_2, border_color=T.BORDER,
-                                        height=34)
-        self.local_model.insert(0, config.LOCAL_MODEL)
-        self.local_model.pack(fill="x")
-        self.local_model.bind("<KeyRelease>", lambda e: self._update_cmd())
-        trow = ctk.CTkFrame(self.local_box, fg_color="transparent")
-        trow.pack(fill="x", pady=(8, 0))
-        ctk.CTkButton(trow, text="Test", width=80, height=30, corner_radius=15, fg_color=T.CARD_2,
-                      hover_color=T.BORDER, command=self._test_local).pack(side="left")
-        self.local_status = ctk.CTkLabel(trow, text="", font=font(12), text_color=T.MUTED,
-                                         wraplength=280, justify="left")
-        self.local_status.pack(side="left", padx=10)
-        self._update_cmd()
-        self._brain_changed(self.brain.get())
-
-        # ---- Voice ----
-        c = self._card(body, "Voice")
-        self.voice_on = self._switch(c, "Eris talks out loud", config.VOICE_ON)
-        self._label(c, "Voice type")
-        self.engine = self._seg(c, ["Natural", "Windows"])
-        self.engine.set("Natural" if config.VOICE_ENGINE == "natural" else "Windows")
-        self._muted(c, "Natural sounds human (free, needs internet). Windows works offline.")
-        self._label(c, "Who she sounds like")
-        vrow = ctk.CTkFrame(c, fg_color="transparent")
-        vrow.pack(fill="x", pady=(4, 0))
-        names = list(VOICES)
-        current = next((k for k, v in VOICES.items() if v == config.VOICE_NAME), names[0])
-        self.voice_pick = ctk.CTkOptionMenu(vrow, values=names, fg_color=T.CARD_2,
-                                            button_color=T.ACCENT_DIM, button_hover_color=T.ACCENT,
-                                            dropdown_fg_color=T.CARD_2,
-                                            dropdown_hover_color=T.ACCENT_DIM)
-        self.voice_pick.set(current)
-        self.voice_pick.pack(side="left", fill="x", expand=True)
-        ctk.CTkButton(vrow, text="▶ Preview", width=96, corner_radius=14, fg_color=T.ACCENT,
-                      hover_color=T.ACCENT_HOVER, command=self._preview).pack(side="right", padx=(8, 0))
-        self.ack = self._switch(c, "Quick \"on it\" reply when she hears you", config.ACK)
-        self._label(c, "Talking speed")
-        self.rate = ctk.CTkSlider(c, from_=-5, to=10, number_of_steps=15, button_color=T.ACCENT,
-                                  button_hover_color=T.GLOW, progress_color=T.ACCENT,
-                                  fg_color=T.BORDER)
-        self.rate.set(config.VOICE_RATE)
-        self.rate.pack(fill="x", pady=(4, 2))
-        self._label(c, "Hearing you: tiny = fastest, small = most accurate")
-        self.whisper = self._seg(c, ["tiny.en", "base.en", "small.en"])
-        self.whisper.set(config.WHISPER_MODEL)
-
-        # ---- Privacy ----
-        c = self._card(body, "Privacy")
-        self.privacy = self._switch(c, "Look away from private things", config.PRIVACY)
-        self._muted(c, "While you type in a password, email, card or code box, Eris takes no "
-                       "screenshots. Those boxes are also blacked out in every screenshot before "
-                       "it leaves your PC. She only ever hears her own hotkeys and Enter, never "
-                       "what you type.")
-        self._label(c, "Never look at these apps (window titles, comma separated)")
-        self.private_apps = ctk.CTkEntry(c, fg_color=T.CARD_2, border_color=T.BORDER, height=34)
-        self.private_apps.insert(0, ", ".join(config.PRIVATE_APPS))
-        self.private_apps.pack(fill="x", pady=(4, 0))
-        self._muted(c, "Tip: the Free brain keeps everything on your PC. With Claude, screenshots "
-                       "go to Anthropic to be understood.")
-
-        # ---- Keys ----
-        c = self._card(body, "Keys")
-        self.keys = {}
-        for name, text in (("TALK_KEY", "Hold to talk"), ("NEXT_KEY", "Next step"),
-                           ("CANCEL_KEY", "Stop")):
-            r = ctk.CTkFrame(c, fg_color="transparent")
-            r.pack(fill="x", pady=3)
-            ctk.CTkLabel(r, text=text, font=font(13), text_color=T.TEXT).pack(side="left")
-            m = ctk.CTkOptionMenu(r, values=[k.upper() for k in FKEYS], width=90,
-                                  fg_color=T.CARD_2, button_color=T.ACCENT_DIM,
-                                  button_hover_color=T.ACCENT, dropdown_fg_color=T.CARD_2)
-            m.set(getattr(config, name).upper())
-            m.pack(side="right")
-            self.keys[name] = m
-
-        # ---- Red box ----
-        c = self._card(body, "Guiding")
-        self._label(c, "Box style")
-        self.box_style = self._seg(c, ["Glow", "Simple"])
-        self.box_style.set("Glow" if config.BOX_STYLE == "glow" else "Simple")
-        self.timeout_label = self._label(c, "")
-        self.timeout = ctk.CTkSlider(c, from_=5, to=60, number_of_steps=11, button_color=T.ACCENT,
-                                     button_hover_color=T.GLOW, progress_color=T.ACCENT,
-                                     fg_color=T.BORDER, command=self._timeout_text)
-        self.timeout.set(config.BOX_TIMEOUT)
-        self._timeout_text(config.BOX_TIMEOUT)
-        self.timeout.pack(fill="x", pady=(4, 8))
-        self.refine = self._switch(c, "Extra-precise boxes", config.REFINE)
-        self._muted(c, "After drawing the box, Eris zooms in and snaps it exactly onto the "
-                       "thing to click. Uses a little more AI.")
-        self.watch = self._switch(c, "Watch what I do and react", config.WATCH)
-        self._muted(c, "While she's waiting, Eris notices when your screen changes (you typed, "
-                       "a page loaded, you clicked something else) and helps from there. "
-                       "Uses a little more AI.")
-        ctk.CTkButton(c, text="Test the red box", corner_radius=14, fg_color=T.CARD_2,
-                      hover_color=T.BORDER, command=self._test_box).pack(fill="x")
-        self._muted(c, "Draws the box around this window for 3 seconds.")
-
-        # ---- App ----
-        c = self._card(body, "App")
-        self.on_top = self._switch(c, "Keep Eris window on top", config.PANEL_ON_TOP)
-        r = ctk.CTkFrame(c, fg_color="transparent")
-        r.pack(fill="x", pady=(8, 0))
-        ctk.CTkLabel(r, text=f"Version {updater.local_version()}", font=font(12),
-                     text_color=T.MUTED).pack(side="left")
-        ctk.CTkButton(r, text="Check for updates", width=140, corner_radius=14, fg_color=T.CARD_2,
-                      hover_color=T.BORDER,
-                      command=lambda: threading.Thread(target=self.app.check_updates, args=(True,),
-                                                       daemon=True).start()).pack(side="right")
-        self._link(c, "Open log folder", settings.folder().as_uri())
-        mem_n = len(settings.memories())
-        r2 = ctk.CTkFrame(c, fg_color="transparent")
-        r2.pack(fill="x", pady=(10, 0))
-        self.mem_label = ctk.CTkLabel(r2, text=f"Eris remembers {mem_n} thing{'s' if mem_n != 1 else ''}",
-                                      font=font(12), text_color=T.MUTED)
-        self.mem_label.pack(side="left")
-        ctk.CTkButton(r2, text="Forget everything", width=140, corner_radius=14,
-                      fg_color=T.CARD_2, hover_color=T.ACCENT_DIM,
-                      command=self._forget).pack(side="right")
-
-        foot = ctk.CTkFrame(self, fg_color="transparent")
-        foot.pack(fill="x", padx=20, pady=12)
-        ctk.CTkButton(foot, text="Save", width=110, height=38, corner_radius=19, fg_color=T.ACCENT,
-                      hover_color=T.ACCENT_HOVER, font=font(14, "bold"),
-                      command=self._save).pack(side="right")
-        ctk.CTkButton(foot, text="Cancel", width=90, height=38, corner_radius=19,
-                      fg_color="transparent", border_width=1, border_color=T.BORDER,
-                      hover_color=T.CARD_2, command=self.destroy).pack(side="right", padx=8)
-
-    # ---- little builders ----
-    def _card(self, parent, title):
-        c = ctk.CTkFrame(parent, fg_color=T.CARD, corner_radius=16)
-        c.pack(fill="x", pady=6, padx=6)
-        inner = ctk.CTkFrame(c, fg_color="transparent")
-        inner.pack(fill="x", padx=14, pady=12)
-        ctk.CTkLabel(inner, text=title.upper(), font=font(11, "bold"), text_color=T.ACCENT
-                     ).pack(anchor="w", pady=(0, 6))
-        return inner
-
-    def _label(self, parent, text):
-        lbl = ctk.CTkLabel(parent, text=text, font=font(12), text_color=T.MUTED, anchor="w")
-        lbl.pack(fill="x", pady=(8, 0))
-        return lbl
-
-    def _muted(self, parent, text):
-        lbl = ctk.CTkLabel(parent, text=text, font=font(12), text_color=T.MUTED, anchor="w",
-                           justify="left", wraplength=360)
-        lbl.pack(fill="x", pady=(4, 0))
-        return lbl
-
-    def _link(self, parent, text, url):
-        lbl = ctk.CTkLabel(parent, text=text, text_color=T.GLOW, cursor="hand2", anchor="w",
-                           font=ctk.CTkFont(family=T.FONT, size=12, underline=True))
-        lbl.pack(fill="x", pady=(4, 0))
-        lbl.bind("<Button-1>", lambda e: webbrowser.open(url))
-
-    def _seg(self, parent, values, command=None):
-        s = ctk.CTkSegmentedButton(parent, values=values, command=command, height=32,
-                                   fg_color=T.CARD_2, unselected_color=T.CARD_2,
-                                   unselected_hover_color=T.BORDER, selected_color=T.ACCENT,
-                                   selected_hover_color=T.ACCENT_HOVER, font=font(13))
-        s.pack(fill="x", pady=(4, 0))
-        return s
-
-    def _switch(self, parent, text, on):
-        s = ctk.CTkSwitch(parent, text=text, font=font(13), progress_color=T.ACCENT,
-                          fg_color=T.BORDER, button_color=T.TEXT, button_hover_color="#ffffff")
-        s.select() if on else s.deselect()
-        s.pack(fill="x", pady=(8, 0))
-        return s
-
-    # ---- behaviour ----
-    def _brain_changed(self, label):
-        self.brain_desc.configure(text=BRAINS[label][1])
-        if BRAINS[label][0] == "local":
-            self.claude_box.pack_forget()
-            self.local_box.pack(fill="x")
-        else:
-            self.local_box.pack_forget()
-            self.claude_box.pack(fill="x")
-
-    def _update_cmd(self):
-        self.cmd_label.configure(text=f"ollama pull {self.local_model.get().strip() or 'qwen2.5vl:7b'}")
-
-    def _copy_cmd(self):
-        self.clipboard_clear()
-        self.clipboard_append(self.cmd_label.cget("text"))
-        self.local_status.configure(text="Copied! Paste it into Command Prompt.", text_color=T.MUTED)
-
-    def _test_local(self):
-        want = self.local_model.get().strip()
-        self.local_status.configure(text="Checking...", text_color=T.MUTED)
-
-        def work():
-            models = local_models()
-            if models is None:
-                msg, colour = "Can't find Ollama. Is it installed and running?", T.ERROR
-            elif not any(m == want or m.split(":")[0] == want for m in models):
-                msg, colour = f"Ollama works, but {want} isn't downloaded yet. Run the command above.", T.GOLD
-            else:
-                msg, colour = "All good! Eris can think for free.", "#4fd18b"
-            self.after(0, lambda: self.local_status.configure(text=msg, text_color=colour))
-        threading.Thread(target=work, daemon=True).start()
-
-    def _preview(self):
-        if self._restore is None:   # remember the saved voice in case you cancel
-            self._restore = (config.VOICE_ENGINE, config.VOICE_NAME, config.VOICE_RATE)
-        config.VOICE_ENGINE = "natural" if self.engine.get() == "Natural" else "windows"
-        config.VOICE_NAME = VOICES[self.voice_pick.get()]
-        config.VOICE_RATE = int(round(self.rate.get()))
-        self.app.eris.voice.stop()
-        self.app.eris.voice.say(PREVIEW, force=True)
-
-    def _forget(self):
-        settings.forget_all()
-        self.app.eris.brain.reset()
-        self.app.avatar.load()
-        self.mem_label.configure(text="Eris remembers 0 things")
-        self.app.log("info", "Eris forgot everything, including her picture.")
-
-    def _timeout_text(self, v):
-        self.timeout_label.configure(text=f"Box hides itself after {int(float(v))} seconds")
-
-    def _test_box(self):
-        x, y = self.winfo_rootx(), self.winfo_rooty()
-        ov = self.app.overlay
-        ov.monitor(0, 0, self.winfo_screenwidth(), self.winfo_screenheight())
-        ov.box(x, y, x + self.winfo_width(), y + self.winfo_height(), "This is the red box")
-        self.after(3000, ov.clear_box)
-
-    def destroy(self):
-        if self._restore:   # previewed a voice but didn't save
-            config.VOICE_ENGINE, config.VOICE_NAME, config.VOICE_RATE = self._restore
-        super().destroy()
-
-    def _save(self):
-        old_whisper = config.WHISPER_MODEL
-        config.BRAIN = BRAINS[self.brain.get()][0]
-        config.API_KEY = self.key.get().strip()
-        config.EFFORT = self.effort.get()
-        config.FAST_MODE = bool(self.fast.get())
-        config.LOCAL_MODEL = self.local_model.get().strip() or "qwen2.5vl:7b"
-        config.VOICE_ON = bool(self.voice_on.get())
-        config.VOICE_ENGINE = "natural" if self.engine.get() == "Natural" else "windows"
-        config.VOICE_NAME = VOICES[self.voice_pick.get()]
-        config.VOICE_RATE = int(round(self.rate.get()))
-        config.WHISPER_MODEL = self.whisper.get()
-        threading.Thread(target=self.app.eris.voice.prepare_acks, daemon=True).start()
-        for name, m in self.keys.items():
-            setattr(config, name, m.get().lower())
-        config.BOX_TIMEOUT = int(round(self.timeout.get()))
-        config.PANEL_ON_TOP = bool(self.on_top.get())
-        config.WATCH = bool(self.watch.get())
-        config.REFINE = bool(self.refine.get())
-        config.PRIVACY = bool(self.privacy.get())
-        config.PRIVATE_APPS = [a.strip() for a in self.private_apps.get().split(",") if a.strip()]
-        config.ACK = bool(self.ack.get())
-        new_style = "glow" if self.box_style.get() == "Glow" else "bars"
-        if new_style != config.BOX_STYLE:
-            config.BOX_STYLE = new_style
-            self.app.log("info", "Box style changes next time you open Eris.")
-        settings.save()
-        self._restore = None
-        self.app.attributes("-topmost", config.PANEL_ON_TOP)
-        self.app._update_hint()
-        self.app._set_state("ready")
-        if config.WHISPER_MODEL != old_whisper:
-            self.app.eris.load_ears()
-        if config.BRAIN != "local" and not config.API_KEY:
-            self.app.log("hint", "That brain needs an API key. Add one, or pick Free.")
-        self.app.log("info", "Settings saved.")
-        self.destroy()
 
 
 def _single_instance():

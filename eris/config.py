@@ -53,4 +53,8 @@ PANEL_ON_TOP = False    # keep the Eris window above other windows
 UPDATE_REPO = "nameAv/eris"
 UPDATE_BRANCH = "main"
 
+# --- Eris herself ---
+VIBE = "friendly"       # "calm", "friendly" or "cheeky"
+USER_NAME = ""          # what she calls you
+
 MAX_STEPS = 20          # safety limit per task

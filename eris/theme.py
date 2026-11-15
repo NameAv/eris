@@ -25,3 +25,33 @@ STATES = {  # state -> (label, dot colour)
     "guiding": ("Guiding", ACCENT),
     "off": ("Paused", MUTED),
 }
+
+
+def font(size=13, weight="normal"):
+    import customtkinter as ctk
+    return ctk.CTkFont(family=FONT, size=size, weight=weight)
+
+
+def tint_titlebar(win):
+    """Dark crimson-black title bar on Windows 11 so the window looks seamless."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+        u32 = ctypes.windll.user32
+        u32.GetParent.restype = wintypes.HWND
+        hwnd = u32.GetParent(win.winfo_id())
+        dwm = ctypes.windll.dwmapi
+        on = ctypes.c_int(1)
+        dwm.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(on), 4)          # dark mode
+        r, g, b = (int(BG[i:i + 2], 16) for i in (1, 3, 5))
+        caption = ctypes.c_int(r | g << 8 | b << 16)
+        dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(caption), 4)     # title bar colour
+        r, g, b = (int(ACCENT[i:i + 2], 16) for i in (1, 3, 5))
+        border = ctypes.c_int(r | g << 8 | b << 16)
+        dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(border), 4)      # crimson outline
+    except Exception:
+        pass
+
+

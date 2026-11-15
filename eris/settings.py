@@ -7,7 +7,7 @@ from pathlib import Path
 from . import config
 
 SAVED = ["BRAIN", "LOCAL_MODEL", "VOICE_ENGINE", "VOICE_NAME", "API_KEY", "EFFORT", "FAST_MODE", "VOICE_ON", "VOICE_RATE", "WHISPER_MODEL",
-         "TALK_KEY", "NEXT_KEY", "CANCEL_KEY", "BOX_TIMEOUT", "PANEL_ON_TOP", "WATCH", "REFINE", "PRIVACY", "PRIVATE_APPS", "ACK", "BOX_STYLE"]
+         "TALK_KEY", "NEXT_KEY", "CANCEL_KEY", "BOX_TIMEOUT", "PANEL_ON_TOP", "WATCH", "REFINE", "PRIVACY", "PRIVATE_APPS", "ACK", "BOX_STYLE", "VIBE", "USER_NAME"]
 
 
 def folder() -> Path:
@@ -18,6 +18,8 @@ def folder() -> Path:
 
 
 FILE = folder() / "settings.json"
+DEFAULTS = {k: (list(v) if isinstance(v, list) else v)
+            for k, v in ((k, getattr(config, k)) for k in SAVED)}   # before any load()
 
 
 def load():
@@ -32,6 +34,16 @@ def load():
 
 def save():
     FILE.write_text(json.dumps({k: getattr(config, k) for k in SAVED}, indent=2))
+
+
+def reset_all(keep_key=True):
+    """Back to how Eris came out of the box (keeps your API key unless told not to)."""
+    key = config.API_KEY
+    for k, v in DEFAULTS.items():
+        setattr(config, k, list(v) if isinstance(v, list) else v)
+    if keep_key:
+        config.API_KEY = key
+    save()
 
 
 def api_key():
@@ -57,6 +69,10 @@ def remember(fact):
     mems = [m for m in memories() if m.lower() != fact.lower()]
     mems.append(fact)
     MEMORY.write_text(json.dumps(mems[-40:], indent=2))
+
+
+def forget(fact):
+    MEMORY.write_text(json.dumps([m for m in memories() if m != fact], indent=2))
 
 
 def forget_all():

@@ -330,12 +330,27 @@ class Brain:
         return "".join(reply)
 
 
+VIBES = {
+    "calm": "Vibe: calm and gentle. Skip the jokes; be warm, clear and reassuring.",
+    "friendly": "",
+    "cheeky": "Vibe: extra cheeky. Playful teasing and witty remarks are welcome (still kind, "
+              "still short, instruction first).",
+}
+
+
 def memory_text():
+    """The part of the instructions that changes: her vibe, your name, her memories.
+    Kept after the cached block so changing it doesn't cost the cache."""
+    parts = []
+    if VIBES.get(config.VIBE):
+        parts.append(VIBES[config.VIBE])
+    if config.USER_NAME.strip():
+        parts.append(f"Their name is {config.USER_NAME.strip()}. Use it now and then, not every line.")
     mems = settings.memories()
-    if not mems:
-        return ""
-    return ("Things you remember from before (about yourself and about them):\n"
-            + "\n".join(f"- {m}" for m in mems))
+    if mems:
+        parts.append("Things you remember from before (about yourself and about them):\n"
+                     + "\n".join(f"- {m}" for m in mems))
+    return "\n\n".join(parts)
 
 
 def _parse_locate(text):

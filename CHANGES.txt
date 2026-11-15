@@ -1,3 +1,4 @@
+v1.7.0: Brand new Settings. Sections in a sidebar, everything saves instantly, voice previews, box style previews, click-to-set hotkeys, a Test key button, and a new page for Eris: vibe, your name, her memories.
 v1.6.0: Privacy (looks away from passwords and emails, blacks them out), a new rounded glowing box, a quick "on it" reply, and faster responses.
 v1.5.0: Boxes now snap onto the real edges of buttons, links, fields and images. Eris has real taste: the picture she picks becomes her avatar, and she remembers things.
 v1.4.0: Much more precise red boxes (she zooms in and snaps onto the exact thing), no more text bubble, what to type shows inside the box, knows which search box is which, and more personality.

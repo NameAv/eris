@@ -71,7 +71,8 @@ If it can't connect, Eris switches to the built-in Windows voice by herself. Use
 
 ## Files
 
-- `eris/app.py`: the window and settings
+- `eris/app.py`: the main window
+- `eris/settings_ui.py`: the settings window (sidebar, saves instantly)
 - `eris/theme.py`: colours
 - `eris/core.py`: hotkeys and step flow
 - `eris/settings.py`: saves your settings to %APPDATA%\Eris

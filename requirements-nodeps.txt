@@ -1,0 +1,3 @@
+# Installed with --no-deps: skips onnxruntime, which Eris doesn't need
+# and which has no build for the newest Python versions.
+faster-whisper>=1.2.1

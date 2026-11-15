@@ -1,1 +1,2 @@
+v1.0.1: Fixed install on the newest Python (skips a package that has no build for it yet).
 v1.0: Eris app window, settings, and auto-updates.

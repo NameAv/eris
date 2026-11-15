@@ -12,7 +12,7 @@ where py >nul 2>nul || set PY=python
 )
 if not exist .venv %PY% -m venv .venv
 .venv\Scripts\python -m pip install --upgrade pip -q
-.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python -m pip install -r requirements.txt && .venv\Scripts\python -m pip install --no-deps -r requirements-nodeps.txt
 if errorlevel 1 ( echo. & echo  Install failed - copy the error above and send it to Claude. & pause & exit /b 1 )
 .venv\Scripts\python -m eris.icon >nul
 powershell -NoProfile -Command "$d=[Environment]::GetFolderPath('Desktop'); $s=(New-Object -ComObject WScript.Shell).CreateShortcut(\"$d\Eris.lnk\"); $s.TargetPath='%CD%\.venv\Scripts\pythonw.exe'; $s.Arguments='-m eris'; $s.WorkingDirectory='%CD%'; $s.IconLocation='%CD%\eris\eris.ico'; $s.Save()"

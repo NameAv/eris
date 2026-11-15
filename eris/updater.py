@@ -88,6 +88,10 @@ def install_update(log=print):
         py = Path(sys.executable).with_name("python.exe") if sys.platform == "win32" else Path(sys.executable)
         r = subprocess.run([str(py), "-m", "pip", "install", "-q", "-r", str(ROOT / "requirements.txt")],
                            cwd=ROOT, capture_output=True, text=True, creationflags=NO_WINDOW)
+        if r.returncode == 0 and (ROOT / "requirements-nodeps.txt").exists():
+            r = subprocess.run([str(py), "-m", "pip", "install", "-q", "--no-deps", "-r",
+                                str(ROOT / "requirements-nodeps.txt")],
+                               cwd=ROOT, capture_output=True, text=True, creationflags=NO_WINDOW)
         if r.returncode != 0:
             log("error", "Installing requirements failed:\n" + r.stderr[-1500:])
             return False

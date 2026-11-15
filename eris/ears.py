@@ -40,7 +40,8 @@ class Ears:
         audio = np.concatenate(frames).flatten()
         if len(audio) < RATE * 0.3:  # under 0.3s = accidental tap
             return ""
+        if np.sqrt(np.mean(audio ** 2)) < 0.004:  # basically silence: don't let Whisper invent words
+            return ""
         segments, _ = self.model.transcribe(audio, beam_size=1, language="en",
-                                            initial_prompt=config.WHISPER_HINT,
-                                            vad_filter=True)
+                                            initial_prompt=config.WHISPER_HINT)
         return " ".join(s.text.strip() for s in segments).strip()

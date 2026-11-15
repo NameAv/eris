@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 @dataclass
 class Event:
-    kind: str            # "box" | "nobox" | "type" | "say" | "wait" | "done" | "keep"
+    kind: str            # "box" | "nobox" | "type" | "say" | "wait" | "done" | "keep" | "fail"
     value: object = None
 
 

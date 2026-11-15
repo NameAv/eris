@@ -9,11 +9,10 @@ Eris's own windows, the red box and its caption are ignored.
 import threading
 import time
 
-import mss
 import numpy as np
 from PIL import Image
 
-from . import config
+from . import config, screen
 
 TW, TH = 320, 180          # thumbnail size
 PIXEL_DIFF = 22            # how different a pixel must be to count (0-255)
@@ -33,13 +32,17 @@ class Watcher:
         self.eris = eris
         self.lock = threading.Lock()
         self.last_fire = 0.0
+        self.keep_streak = 0
         self.rebase()
         threading.Thread(target=self._loop, daemon=True).start()
 
-    def rebase(self, delay=1.2):
-        """Start comparing against the screen as it looks `delay` seconds from now
-        (after the box has finished flashing)."""
+    def rebase(self, delay=0.5, kept=False):
+        """Start comparing against the screen as it looks `delay` seconds from now.
+        (The box, its caption and Eris's own windows are masked out, so a short
+        delay is enough.) kept=True: the last look found nothing new, so be more
+        patient with a screen that never stops changing (a video, Unity's Play mode)."""
         with self.lock:
+            self.keep_streak = self.keep_streak + 1 if kept else 0
             self.base = None
             self.prev = None
             self.base_after = time.time() + delay
@@ -88,7 +91,7 @@ class Watcher:
             try:
                 if not self._ready() or time.time() < self.base_after:
                     continue
-                sct = sct or mss.mss()
+                sct = sct or screen.new_sct()
                 frame = self._thumb(sct, self.eris.mon)
                 if self._step(frame):
                     self.eris.auto_look()
@@ -116,7 +119,8 @@ class Watcher:
             settle = 1.0 if self.eris.waiting == "click" else 1.8
             settled = (self.changed_at is not None and self.still_since is not None
                        and now - self.still_since >= settle)
-            busy_screen = self.changed_at is not None and now - self.changed_at > 8
+            patience = 8 * 2 ** min(self.keep_streak, 4)   # 8s, 16s, 32s... for busy screens
+            busy_screen = self.changed_at is not None and now - self.changed_at > patience
             nudged = self.nudged_at is not None and now - self.nudged_at > 1.2
             if (settled or busy_screen or nudged) and now - self.last_fire >= MIN_GAP:
                 self.last_fire = now

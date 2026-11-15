@@ -13,9 +13,10 @@ OFF = -32000  # parked off-screen when hidden (hiding/showing windows can steal 
 
 
 def _click_through(win):
-    """Make a small window ignore the mouse and never take focus (Windows)."""
+    """Make a small window ignore the mouse and never take focus (Windows).
+    Returns its window handles so we can keep it on top without activating it."""
     if sys.platform != "win32":
-        return
+        return []
     import ctypes
     from ctypes import wintypes
     u32 = ctypes.windll.user32
@@ -40,6 +41,20 @@ def _click_through(win):
                            | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)
         # A layered window is invisible until this is called - set it fully opaque.
         u32.SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA)
+    return list(handles)
+
+
+def _raise(win, handles):
+    """Bring a piece to the very top WITHOUT taking keyboard focus from your app."""
+    if sys.platform != "win32" or not handles:
+        win.lift()
+        return
+    import ctypes
+    HWND_TOPMOST = -1
+    SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x1, 0x2, 0x10
+    for hwnd in handles:
+        ctypes.windll.user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                                          SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE)
 
 
 def _piece(master, bg):
@@ -66,19 +81,23 @@ class Overlay:
         self.pill_label.pack(padx=2, pady=2)
         self.pieces = self.bars + [self.cap, self.pill]
         master.update_idletasks()
+        self.handles = {}
         for p in self.pieces:
             p.deiconify()
-            _click_through(p)
+            self.handles[p] = _click_through(p)
         self.geom = (0, 0, master.winfo_screenwidth(), master.winfo_screenheight())
         self.rect = None
+        self.pill_shown = False
         self.box_timer = None
         self.flash_jobs = []
         master.after(1500, self._keep_on_top)
 
     def _keep_on_top(self):
-        for p in self.pieces:
-            p.attributes("-topmost", True)
-            p.lift()
+        visible = (self.bars + [self.cap]) if self.rect else []
+        if self.pill_shown:
+            visible.append(self.pill)
+        for p in visible:
+            _raise(p, self.handles.get(p))
         self.master.after(1500, self._keep_on_top)
 
     @staticmethod
@@ -104,7 +123,7 @@ class Overlay:
         self._place(left, x1 - t, y1, t, y2 - y1)
         self._place(right, x2, y1, t, y2 - y1)
         for p in self.bars + [self.cap]:
-            p.lift()
+            _raise(p, self.handles.get(p))
         self._flash()
         if caption:
             self.caption(caption)
@@ -146,6 +165,7 @@ class Overlay:
 
     def status(self, text):
         """Little pill bottom-right, so you see Eris react even with her window hidden."""
+        self.pill_shown = bool(text)
         if not text:
             self._park(self.pill)
             return
@@ -154,3 +174,4 @@ class Overlay:
         w, h = self.pill.winfo_reqwidth(), self.pill.winfo_reqheight()
         left, top, sw, sh = self.geom
         self._place(self.pill, left + sw - w - 24, top + sh - h - 64, w, h)
+        _raise(self.pill, self.handles.get(self.pill))

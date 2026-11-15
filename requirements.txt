@@ -1,15 +1,16 @@
-anthropic>=2.8.0
-mss
-pillow
-pynput
-customtkinter
-numpy
-sounddevice
-ctranslate2>=4.0
-huggingface-hub>=0.21
-tokenizers>=0.13
-av>=11
+# Upper bounds: a future major version can't break Eris on a fresh install.
+anthropic>=2.8.0,<3
+mss>=9,<12
+pillow>=10,<14
+pynput>=1.7,<2
+customtkinter>=5.2,<7
+numpy>=1.26,<3
+sounddevice>=0.4,<1
+ctranslate2>=4.0,<5
+huggingface-hub>=0.21,<3
+tokenizers>=0.13,<1
+av>=11,<20
 tqdm
-edge-tts
+edge-tts>=6.1,<8
 pywin32; sys_platform == "win32"
 pyttsx3; sys_platform != "win32"

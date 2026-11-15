@@ -148,7 +148,9 @@ class App(ctk.CTk):
         self._rects = rects
 
     def _pump(self):
-        self._cache_rects()
+        self._ticks = getattr(self, "_ticks", 0) + 1
+        if self._ticks % 15 == 0:   # about twice a second is plenty
+            self._cache_rects()
         try:
             while True:
                 name, args = self.q.get_nowait()
@@ -684,5 +686,32 @@ class SettingsWindow(ctk.CTkToplevel):
         self.destroy()
 
 
+def _single_instance():
+    """Only one Eris at a time (two would both answer F8 and talk over each other).
+    Returns False if another copy is already running."""
+    if sys.platform != "win32":
+        return True
+    import ctypes
+    from ctypes import wintypes
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)   # reliable GetLastError
+    k32.CreateMutexW.restype = wintypes.HANDLE
+    k32.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
+    after_update = "--after-update" in sys.argv
+    for _ in range(40 if after_update else 1):   # after an update, wait for the old copy to close
+        handle = k32.CreateMutexW(None, False, "Local\\ErisScreenGuide")
+        if ctypes.get_last_error() != 183:       # 183 = already exists
+            globals()["_mutex"] = handle          # keep it alive for the whole run
+            return True
+        k32.CloseHandle(handle)
+        time.sleep(0.25)
+    return False
+
+
 def main():
+    if not _single_instance():
+        if sys.platform == "win32":
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(None, "Eris is already running. Look for her window "
+                                             "or her icon in the taskbar.", "Eris", 0x40)
+        return
     App().mainloop()

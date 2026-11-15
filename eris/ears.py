@@ -7,6 +7,7 @@ import sounddevice as sd
 from . import config
 
 RATE = 16000
+HALLUCINATIONS = {"thank you", "thanks for watching", "you", "bye", "thank you for watching"}
 
 
 class Ears:
@@ -40,8 +41,15 @@ class Ears:
         audio = np.concatenate(frames).flatten()
         if len(audio) < RATE * 0.3:  # under 0.3s = accidental tap
             return ""
-        if np.sqrt(np.mean(audio ** 2)) < 0.004:  # basically silence: don't let Whisper invent words
+        if np.sqrt(np.mean(audio ** 2)) < 0.0015:  # basically silence: don't let Whisper invent words
             return ""
+        peak = float(np.max(np.abs(audio)))
+        if 0.02 < peak < 0.3:   # quiet mic: turn it up so Whisper hears it clearly
+            audio = audio * (0.5 / peak)
         segments, _ = self.model.transcribe(audio, beam_size=1, language="en",
-                                            initial_prompt=config.WHISPER_HINT)
-        return " ".join(s.text.strip() for s in segments).strip()
+                                            initial_prompt=config.WHISPER_HINT,
+                                            condition_on_previous_text=False)
+        # Drop bits Whisper is unsure were speech at all (it invents "Thank you." on noise).
+        text = " ".join(s.text.strip() for s in segments
+                        if not (s.no_speech_prob > 0.6 and s.avg_logprob < -0.8)).strip()
+        return "" if text.lower().strip(" .!") in HALLUCINATIONS else text

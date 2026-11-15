@@ -34,6 +34,11 @@ class Shot:
                 int(self.left + x2 * self.sx) + p, int(self.top + y2 * self.sy) + p)
 
 
+def new_sct():
+    """mss renamed its entry point; support both spellings."""
+    return mss.MSS() if hasattr(mss, "MSS") else mss.mss()
+
+
 def monitor_under_mouse(sct):
     mx, my = _mouse.position
     for m in sct.monitors[1:]:
@@ -45,7 +50,7 @@ def monitor_under_mouse(sct):
 def grab(snap=1) -> Shot:
     """snap=28 makes both sides multiples of 28, which local Qwen-VL models
     need so their coordinates line up exactly with the image we sent."""
-    with mss.mss() as sct:
+    with new_sct() as sct:
         mon = monitor_under_mouse(sct)
         raw = sct.grab(mon)
     img = Image.frombytes("RGB", raw.size, raw.bgra, "raw", "BGRX")

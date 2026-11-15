@@ -21,7 +21,8 @@ WATCH_PROMPT = ("(Automatic look: my screen changed while you were waiting.) Her
 MAX_LOOKS_PER_TASK = 30
 
 NEXT_STEP_PROMPT = ("I did that step. Here's my screen now. Check it worked, then give the "
-                    "next step, or DONE if the task is finished.")
+                    "next step, or DONE if the task is finished. If the screen is still loading, "
+                    "reply with just KEEP and you'll get another look when it changes.")
 
 
 class Eris:
@@ -44,6 +45,8 @@ class Eris:
         self.auto_looks = 0      # automatic looks since the last new instruction
         self.task_looks = 0      # automatic looks this task (safety cap)
         self.told_watch = False
+        self.early_click = None  # gen of a box you clicked before she finished talking
+        self.box_gen = None
         threading.Thread(target=self._input_worker, daemon=True).start()
         self.watcher = Watcher(self)
         self.load_ears()
@@ -179,6 +182,17 @@ class Eris:
         def on_event(ev):
             if not alive() or st["kept"]:
                 return
+            if ev.kind == "fail":
+                if soft:   # a hiccup during an automatic look: just keep waiting
+                    self.ui.log("debug", f"automatic look failed: {ev.value}")
+                    st["kept"] = True
+                    return
+                self._clear()
+                self.ui.log("error", ev.value)
+                self.voice.say(ev.value)
+                self.ui.cmd("state", "ready")
+                st["ended"] = True
+                return
             if st["first"]:
                 st["first"] = False
                 if ev.kind == "keep":
@@ -192,6 +206,8 @@ class Eris:
                         self._clear()
             if ev.kind == "box":
                 self.box = shot.to_screen(ev.value)
+                self.box_gen = my
+                self.early_click = None
                 self.ui.cmd("box", *self.box, "")
             elif ev.kind == "nobox":
                 self._clear()
@@ -226,10 +242,16 @@ class Eris:
             return
         self.ui.cmd("status", "")
         if st["kept"]:
-            self.watcher.rebase(delay=0.3)   # nothing new: keep watching from here
+            if not soft:   # screen was still loading: wait for it to change
+                self.waiting = self.waiting or "next"
+                self.ui.cmd("state", "guiding")
+            self.watcher.rebase(delay=0.3, kept=True)   # nothing new: keep watching from here
             return
         if not st["ended"]:
             self.waiting = "next"
+        if self.waiting == "click" and self.early_click == my:
+            self.advance()   # you already clicked the box while she was talking
+            return
         if self.waiting:
             self.watcher.rebase()
             if self.waiting == "next" and not soft and not self.told_watch:
@@ -292,7 +314,7 @@ class Eris:
                 self.ui.log("error", f"Input problem: {e}")
 
     def on_click(self, x, y, button, pressed):
-        if pressed and self.waiting == "click":
+        if pressed and self.box:
             self.inbox.put(("click", x, y))
 
     def on_press(self, key):
@@ -302,12 +324,16 @@ class Eris:
         self.inbox.put(("release", key, None))
 
     def _handle_click(self, x, y):
-        if self.waiting != "click" or not self.box:
+        if not self.box:
             return
         x1, y1, x2, y2 = self.box
         s = config.CLICK_SLOP
-        if x1 - s <= x <= x2 + s and y1 - s <= y <= y2 + s:
+        if not (x1 - s <= x <= x2 + s and y1 - s <= y <= y2 + s):
+            return
+        if self.waiting == "click":
             self.advance()
+        elif self.busy and self.box_gen == self.gen:
+            self.early_click = self.gen   # she's still talking; move on once she's done
 
     @staticmethod
     def _is(key, name):

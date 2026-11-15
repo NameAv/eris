@@ -68,7 +68,11 @@ SAY Click the address bar at the top and type wikipedia, then press Enter.
 SAY You don't need the full address, just the name.
 WAIT next"""
 
-KEEP_MESSAGES = 16   # recent text-only history kept for context
+# History is trimmed in chunks (not one turn at a time) so the cached prefix
+# stays the same for many steps in a row.
+HISTORY_MAX = 28
+HISTORY_KEEP = 12
+CACHE = {"type": "ephemeral"}
 
 
 class Brain:
@@ -83,7 +87,8 @@ class Brain:
         if not key:
             return None
         if key != self._key:
-            self.client = anthropic.Anthropic(api_key=key)
+            # Short timeout: a live helper should fail fast and say so, not hang.
+            self.client = anthropic.Anthropic(api_key=key, timeout=60.0, max_retries=2)
             self._key = key
         return self.client
 
@@ -116,11 +121,11 @@ class Brain:
             {"role": "user", "content": f"[screenshot] {text}"},
             {"role": "assistant", "content": reply.strip() or "NOBOX\nDONE"},
         ]
-        self.history = self.history[-KEEP_MESSAGES:]
+        if len(self.history) > HISTORY_MAX:
+            self.history = self.history[-HISTORY_KEEP:]
 
     def _fail(self, on_event, msg):
-        on_event(Event("say", msg))
-        on_event(Event("done"))
+        on_event(Event("fail", msg))
 
     # ---------- Claude (paid, best) ----------
     def _claude(self, shot, user_text, feed, alive, on_event):
@@ -128,13 +133,22 @@ class Brain:
         if not client:
             self._fail(on_event, "I need an API key for that brain. Open Settings, or switch to the free one.")
             return None
-        messages = self.history + [{"role": "user", "content": [
+        # Prompt caching: the system prompt and earlier conversation are re-read
+        # from cache (much cheaper, and replies start sooner). Breakpoint 1 is the
+        # system prompt; breakpoint 2 is the last message of the history.
+        history = [dict(m) for m in self.history]
+        if history:
+            last = history[-1]
+            history[-1] = {"role": last["role"], "content": [
+                {"type": "text", "text": last["content"], "cache_control": CACHE}]}
+        messages = history + [{"role": "user", "content": [
             {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
                                          "data": shot.b64}},
             {"type": "text", "text": user_text},
         ]}]
-        common = dict(max_tokens=config.MAX_TOKENS, system=SYSTEM, messages=messages,
-                      output_config={"effort": config.EFFORT})
+        common = dict(max_tokens=config.MAX_TOKENS,
+                      system=[{"type": "text", "text": SYSTEM, "cache_control": CACHE}],
+                      messages=messages, output_config={"effort": config.EFFORT})
         reply = []
         try:
             if config.BRAIN == "claude-cheap":
@@ -151,6 +165,9 @@ class Brain:
                     reply.append(chunk)
                     feed(chunk)
                 final = stream.get_final_message()
+            u = final.usage
+            self.log("debug", f"tokens: in={u.input_tokens} cache_read={u.cache_read_input_tokens} "
+                              f"cache_write={u.cache_creation_input_tokens} out={u.output_tokens}")
             if final.stop_reason == "refusal":
                 self._fail(on_event, "Sorry, I can't help with that one.")
                 return None
@@ -170,8 +187,12 @@ class Brain:
             "content": user_text + "\nAnswer ONLY with BOX/NOBOX, SAY and WAIT/DONE lines.",
             "images": [shot.b64],
         }]
+        # num_ctx: Ollama's default context is too small for the instructions plus a
+        # screenshot (~1200 tokens) plus history, and it silently drops the start
+        # (the instructions!) when it overflows.
         body = json.dumps({"model": config.LOCAL_MODEL, "messages": messages, "stream": True,
-                           "keep_alive": "30m", "options": {"temperature": 0.2}}).encode()
+                           "keep_alive": "30m",
+                           "options": {"temperature": 0.2, "num_ctx": 8192}}).encode()
         req = urllib.request.Request(config.OLLAMA_URL.rstrip("/") + "/api/chat", data=body,
                                      headers={"Content-Type": "application/json"})
         reply = []

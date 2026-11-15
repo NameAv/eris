@@ -101,4 +101,4 @@ def install_update(log=print):
 def restart():
     """Start a fresh copy of Eris, then the caller should close this one."""
     exe = sys.executable  # pythonw.exe when launched from the shortcut
-    subprocess.Popen([exe, "-m", "eris"], cwd=ROOT, creationflags=NO_WINDOW)
+    subprocess.Popen([exe, "-m", "eris", "--after-update"], cwd=ROOT, creationflags=NO_WINDOW)

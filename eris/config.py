@@ -9,7 +9,7 @@ LOCAL_MODEL = "qwen2.5vl:7b"   # any Ollama vision model
 OLLAMA_URL = "http://localhost:11434"
 EFFORT = "low"          # low = fastest replies. Try "medium" if steps get sloppy.
 FAST_MODE = False       # True = up to ~2.5x faster output, but costs 2x per token.
-MAX_TOKENS = 1500
+MAX_TOKENS = 4000        # room for her (hidden) thinking plus the short reply
 
 # --- Keys (hold TALK_KEY while speaking) ---
 TALK_KEY = "f8"         # hold to talk

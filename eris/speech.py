@@ -37,6 +37,7 @@ class Voice:
         self.sapi_q = queue.Queue()
         self.tmp = tempfile.mkdtemp(prefix="eris-voice-")
         self.warned = False
+        self.natural_off_until = 0.0   # after a failure, use the Windows voice for a bit
         threading.Thread(target=self._synth_loop, daemon=True).start()
         threading.Thread(target=self._play_loop, daemon=True).start()
         threading.Thread(target=self._sapi_loop, daemon=True).start()
@@ -45,7 +46,8 @@ class Voice:
     def say(self, text: str, force=False):
         if not (config.VOICE_ON or force):
             return
-        if config.VOICE_ENGINE == "natural" and sys.platform == "win32":
+        if (config.VOICE_ENGINE == "natural" and sys.platform == "win32"
+                and time.time() >= self.natural_off_until):
             self.text_q.put((self.gen, text))
         else:
             self.sapi_q.put(("say", text))
@@ -68,15 +70,21 @@ class Voice:
             g, text = self.text_q.get()
             if g != self.gen:
                 continue
+            if time.time() < self.natural_off_until:   # already queued, but server is down
+                self.sapi_q.put(("say", text))
+                continue
             n += 1
             path = os.path.join(self.tmp, f"s{n % 50}.mp3")
             try:
                 import edge_tts
                 rate = f"{int(config.VOICE_RATE) * 6:+d}%"
                 comm = edge_tts.Communicate(text, config.VOICE_NAME, rate=rate)
-                loop.run_until_complete(asyncio.wait_for(comm.save(path), 8))
+                loop.run_until_complete(asyncio.wait_for(comm.save(path), 6))
                 self.audio_q.put((g, path))
             except Exception as e:
+                # Don't make every sentence wait for a slow/offline server: switch to
+                # the Windows voice for a minute, then try the natural one again.
+                self.natural_off_until = time.time() + 60
                 if not self.warned:
                     self.warned = True
                     self.log("hint", f"Natural voice unavailable ({e.__class__.__name__}), "

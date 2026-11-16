@@ -44,7 +44,6 @@ eris.ears.Call = FakeCall
 import eris.speech  # noqa: E402
 eris.speech.Voice._sapi_loop = lambda self: None
 config.API_KEY, config.VOICE_ON = "sk-ant-test", False
-config.THEME = os.environ.get("ERIS_THEME", "crimson")     # run_all tries every look
 
 REPLIES = []
 
@@ -74,9 +73,7 @@ def step(ms):
 
 def run_steps(i=0):
     if i >= len(STEPS):
-        if config.THEME == "neon":
-            check("Neon: the banner is animating", app.banner is not None and app.banner.frames > 20,
-                  getattr(app.banner, "frames", None))
+        check("the banner is animating", app.banner.frames > 20, app.banner.frames)
         errors = [l for l in settings.folder().joinpath("eris.log").read_text(encoding="utf-8").splitlines()
                   if "window couldn't do" in l or "[error]" in l] if settings.folder().joinpath("eris.log").exists() else []
         check("the window logged no errors", not errors, errors[:3])

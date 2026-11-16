@@ -115,7 +115,7 @@ class Overlay:
         self.box_timer = None
         self.flash_jobs = []
         self.glow = self.extra = None
-        if sys.platform == "win32" and config.BOX_STYLE in ("glow", "neon"):
+        if sys.platform == "win32" and config.BOX_STYLE != "bars":
             try:
                 from .glowbox import GlowBox
                 self.glow = GlowBox(master)

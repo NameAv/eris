@@ -1,4 +1,4 @@
-"""The Neon look's living banner: streaks of red light drifting across the top of the
+"""The living banner: streaks of red light drifting across the top of the
 window (far ones slow, near ones fast) and, every few seconds or when Eris starts
 talking, a short glitch: slices jump sideways, the red splits, a bright line tears
 through. Each frame is a few small numpy operations, repainted into one image."""

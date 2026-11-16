@@ -23,11 +23,12 @@ def _red():
 
 def _font(size):
     from PIL import ImageFont
-    try:
-        return ImageFont.truetype("bahnschrift.ttf", size)    # Windows' condensed HUD-style font
-    except OSError:
-        from .glowbox import _font as f
-        return f(size)
+    for name in ("bahnschrift.ttf", "seguisb.ttf", "arialbd.ttf", "DejaVuSans-Bold.ttf"):
+        try:
+            return ImageFont.truetype(name, size)       # Windows' condensed HUD font first
+        except OSError:
+            continue
+    return ImageFont.load_default()
 
 
 FIELDS = {"text box", "dropdown", "list item", "tree item", "item", "menu item", "header", "slider"}

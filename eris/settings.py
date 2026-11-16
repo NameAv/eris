@@ -7,7 +7,7 @@ from pathlib import Path
 from . import config
 
 SAVED = ["BRAIN", "LOCAL_MODEL", "VOICE_ENGINE", "VOICE_NAME", "API_KEY", "EFFORT", "FAST_MODE", "VOICE_ON", "VOICE_RATE", "WHISPER_MODEL",
-         "TALK_KEY", "NEXT_KEY", "CANCEL_KEY", "BOX_TIMEOUT", "PANEL_ON_TOP", "WATCH", "REFINE", "PRIVACY", "PRIVATE_APPS", "ACK", "BOX_STYLE", "VIBE", "USER_NAME", "UPDATES", "ELEMENTS", "OCR", "TRACK", "BOX_IN_RECORDINGS", "THEME", "GLITCH"]
+         "TALK_KEY", "NEXT_KEY", "CANCEL_KEY", "BOX_TIMEOUT", "PANEL_ON_TOP", "WATCH", "REFINE", "PRIVACY", "PRIVATE_APPS", "ACK", "BOX_STYLE", "VIBE", "USER_NAME", "UPDATES", "ELEMENTS", "OCR", "TRACK", "BOX_IN_RECORDINGS", "GLITCH"]
 
 
 def folder() -> Path:
@@ -65,6 +65,8 @@ def load():
     for k in SAVED:
         if k in data:
             setattr(config, k, data[k])
+    if config.BOX_STYLE not in ("neon", "bars"):
+        config.BOX_STYLE = "neon"        # the old rounded "glow" box is now the HUD box
     if data.get("API_KEY_PROTECTED"):
         try:
             config.API_KEY = _unprotect_key(data["API_KEY_PROTECTED"])

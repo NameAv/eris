@@ -55,15 +55,13 @@ After that, just open **Eris** from the Desktop. No command window.
 - **Stop / F10** clears everything. **New task** makes her forget the last task.
 - **Active** switch: turn it off and Eris ignores the hotkeys.
 - **Settings**: brain, voice, hotkeys, box timeout, keep-on-top, and a *Test the red box* button.
-- **Two looks** (Settings, then Eris, then Look): *Crimson*, soft and rounded, or *Neon HUD*:
-  black, neon red, sharp lines and streaks of red light drifting across the top, with a glitch
-  now and then and as she starts listening or talking (*Glitch effects* switches that off). The box has a matching *Neon HUD* style
-  (Settings, then Guiding) whose shape suits what it points at: a ring for small icons and
-  buttons, a slim bar for search bars, fields and list rows, a frame with a tab for ordinary
-  buttons, corner brackets for big things. Every label (what to type, *drag*, *drop here*,
-  shortcuts, scrolling) is the same solid red plate, and drags get a HUD connector line to an
-  arrowhead (three designs). Each new box takes the next of three versions of its shape, so
-  several boxes never look quite the same.
+- **Her look:** a neon-red HUD. Black, sharp red lines and streaks of red light drifting across
+  the top, with a glitch now and then (Settings, then Eris: *Glitch effects*). The box on your
+  screen takes a HUD shape that suits what it points at (a ring for small icons, a slim bar for
+  search bars and fields, a frame with a tab for buttons, corner brackets for big things), and
+  each new box is a slightly different version. Every label (what to type, *drag*, *drop here*,
+  shortcuts, scrolling) is the same solid red plate, and drags get a HUD line to an arrowhead.
+  If the box ever misbehaves, Settings, then Guiding, has a plain *Simple* box.
 
 ## Privacy
 

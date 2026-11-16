@@ -58,26 +58,22 @@ def test_new_lines():
 
 
 def test_looks():
-    from eris import glowbox, theme
-    theme.apply("neon")
-    check("Neon look: black, neon red, sharp corners",
-          theme.NAME == "neon" and theme.BG == "#040102" and theme.r(26) == 3 and theme.STATES["guiding"][1] == "#ff2236")
-    theme.apply("crimson")
-    check("...and back to Crimson exactly", theme.BG == "#0d0809" and theme.r(26) == 26)
-    theme.apply("something else")
-    check("an unknown look falls back to Crimson", theme.NAME == "crimson")
+    from eris import config, settings, theme
+    check("the look: black, neon red, sharp corners",
+          theme.BG == "#040102" and theme.r(26) == 3 and theme.STATES["guiding"][1] == "#ff2236")
+    settings.folder().mkdir(parents=True, exist_ok=True)
+    settings.FILE.write_text('{"BOX_STYLE": "glow"}')
+    settings.load()
+    check("an old rounded-box setting becomes the HUD box", config.BOX_STYLE == "neon")
+    settings.FILE.unlink()
     banner = theme.streaks(480, 28)
     px = np.asarray(banner)
     check("light-streak banner: mostly dark, with red streaks",
           px.mean() < 60 and (px[..., 0] > 150).mean() > 0.02 and px[..., 0].mean() > px[..., 2].mean() * 2)
-    hud = glowbox.render(200, 40, style="neon")
-    round_ = glowbox.render(200, 40, style="glow")
-    check("Neon HUD box: cut corners and tabs (not the rounded box)",
-          np.asarray(hud).shape == np.asarray(round_).shape and not np.array_equal(np.asarray(hud), np.asarray(round_)))
 
 
 def test_hud_shapes():
-    from eris import config, glowbox, hud
+    from eris import glowbox, hud
     check("small square things get the ring", hud.shape_for(38, 32) == "ring")
     check("long thin things get the bar", hud.shape_for(400, 36) == "bar")
     check("ordinary things get the frame", hud.shape_for(140, 40) == "frame")
@@ -85,7 +81,6 @@ def test_hud_shapes():
     check("a wide button is still a button (frame), a short field still a field (bar)",
           hud.shape_for(228, 32, "button") == "frame" and hud.shape_for(120, 30, "text box") == "bar")
     check("a big picture gets the panel", hud.shape_for(240, 160, "image") == "panel")
-    config.BOX_STYLE = "neon"
     for w, h in [(38, 32), (400, 36), (140, 40), (600, 400)]:
         img = glowbox.render(w, h, "rigid")
         a = np.asarray(img)[..., 3]
@@ -120,7 +115,6 @@ def test_hud_shapes():
           np.array_equal(lines[0], np.asarray(glowbox.render_drop((100, 600, 220, 630), (100, 100, 200, 124), 0)[0])))
     left = np.asarray(glowbox.render_drop((900, 300, 1000, 330), (100, 300, 200, 330), 2)[0])
     check("a drag to the left draws too", left[..., 3].max() > 200)
-    config.BOX_STYLE = "glow"
 
 
 def test_glitch_banner():

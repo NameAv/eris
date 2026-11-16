@@ -23,7 +23,7 @@ CANCEL_KEY = "f10"      # stop everything, clear the box
 
 # --- Red box ---
 BOX_COLOR = "#ff2a3d"
-BOX_STYLE = "glow"       # "glow" (rounded, glowing), "neon" (angular HUD) or "bars" (plain, works everywhere)
+BOX_STYLE = "neon"       # "neon" (the glowing HUD box) or "bars" (plain, works everywhere)
 BOX_WIDTH = 4
 BOX_PADDING = 4         # px of extra room around the target
 BOX_TIMEOUT = 20        # seconds before the box hides itself no matter what
@@ -55,8 +55,7 @@ ELEMENTS = True         # give the AI Windows' numbered list of clickable things
 REFINE = True           # zoom in to snap the box exactly onto the target
 WATCH = True            # watch the screen while waiting and react to what you do
 LOCAL_WINDOW_ONLY = True   # Free brain: send just the app's window when it doesn't fill the screen
-GLITCH = True            # Neon look: a glitch in the banner now and then
-THEME = "crimson"        # "crimson" (soft and rounded) or "neon" (a neon-red HUD)
+GLITCH = True            # a glitch in the banner now and then
 TRACK = True            # the box follows its button when you scroll or move the window
 BOX_IN_RECORDINGS = False   # show the box in screen recordings / shares (it then also shows
                             # up in her own screenshots, so it's off by default)

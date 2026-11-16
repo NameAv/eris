@@ -228,7 +228,7 @@ class SettingsWindow(ctk.CTkToplevel):
         return e
 
     def select_card(self, parent, selected, title, tag, text, command, image=None):
-        """A big clickable option card (crimson border when chosen)."""
+        """A big clickable option card (red border when chosen)."""
         c = ctk.CTkFrame(parent, fg_color=T.CARD_2 if selected else T.CARD, corner_radius=T.r(14),
                          border_width=2, border_color=T.ACCENT if selected else T.BORDER)
         inner = ctk.CTkFrame(c, fg_color="transparent")
@@ -480,12 +480,11 @@ class SettingsWindow(ctk.CTkToplevel):
         grid = ctk.CTkFrame(c, fg_color="transparent")
         grid.pack(fill="x", pady=(6, 0))
         for i, (value, title, text) in enumerate([
-                ("glow", "Glow", "Rounded, glowing, with a gentle pulse."),
-                ("neon", "Neon HUD", "Angular, glowing, with HUD tabs. Goes with the Neon look."),
-                ("bars", "Simple", "Plain sharp box. Use it if the others misbehave.")]):
+                ("neon", "Neon HUD", "Glowing HUD frames whose shape suits what she points at."),
+                ("bars", "Simple", "A plain sharp box. Use it if the HUD box misbehaves.")]):
             grid.columnconfigure(i, weight=1, uniform="s")
             img = ctk.CTkImage(light_image=_style_preview(value), dark_image=_style_preview(value),
-                               size=(160, 54))
+                               size=(220, 74))
             self.select_card(grid, config.BOX_STYLE == value, title, None, text,
                              lambda v=value: (self.set(BOX_STYLE=v), self.toast("✓ Saved: takes effect next time Eris opens"),
                                               self.show("guiding")), image=img
@@ -597,22 +596,8 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _page_eris(self):
         c = self.card("Look")
-        grid = ctk.CTkFrame(c, fg_color="transparent")
-        grid.pack(fill="x", pady=(6, 0))
-        for i, (value, title, text) in enumerate([
-                ("crimson", "Crimson", "Soft and rounded, deep crimson."),
-                ("neon", "Neon HUD", "Black and neon red, sharp lines, light streaks.")]):
-            grid.columnconfigure(i, weight=1, uniform="t")
-            img = ctk.CTkImage(light_image=_theme_preview(value), dark_image=_theme_preview(value), size=(220, 74))
-            self.select_card(grid, config.THEME == value, title, None, text,
-                             lambda v=value: (self.set(THEME=v), self.show("eris"),
-                                              self.toast("✓ Saved: restart Eris to see it")), image=img
-                             ).grid(row=0, column=i, sticky="nsew", padx=4)
-        self.switch(c, "Glitch effects", "Neon look: the banner glitches now and then, and when she "
+        self.switch(c, "Glitch effects", "The streaks across the top glitch now and then, and when she "
                     "starts listening or guiding.", "GLITCH")
-        if config.THEME != T.NAME:
-            self.button(c, "Restart Eris now", lambda: self.app.cmd("restart"), primary=True
-                        ).pack(anchor="w", pady=(12, 0))
         c = self.card()
         top = ctk.CTkFrame(c, fg_color="transparent")
         top.pack(fill="x")
@@ -856,7 +841,7 @@ def _hand(widget):
 
 
 def _avatar_image(size):
-    """Her picture as a circle (or a crimson orb with an E if she hasn't picked one)."""
+    """Her picture as a circle (or a red orb with an E if she hasn't picked one)."""
     from PIL import ImageFont
     big = size * 3
     img = Image.new("RGBA", (big, big), (0, 0, 0, 0))
@@ -883,40 +868,11 @@ def _avatar_image(size):
     return img.resize((size, size), Image.LANCZOS)
 
 
-def _theme_preview(name):
-    """A little picture of each look: the talk button on its background."""
-    from PIL import ImageFont
-    W, H = 440, 148
-    neon = name == "neon"
-    img = T.streaks(W, H) if neon else Image.new("RGB", (W, H), "#0d0809")
-    d = ImageDraw.Draw(img)
-    try:
-        f = ImageFont.truetype("bahnschrift.ttf" if neon else "segoeui.ttf", 28)
-    except OSError:
-        try:
-            f = ImageFont.truetype("DejaVuSans.ttf", 26)
-        except OSError:
-            f = ImageFont.load_default()
-    x1, y1, x2, y2 = 70, 46, 370, 104
-    if neon:
-        c = 12
-        pts = [(x1 + c, y1), (x2, y1), (x2, y2 - c), (x2 - c, y2), (x1, y2), (x1, y1 + c)]
-        d.polygon(pts, fill="#0a0304")
-        d.line(pts + [pts[0]], fill="#ff2236", width=3)
-        d.line((x2 - 60, y1 - 7, x2, y1 - 7), fill="#ff2236", width=3)       # HUD tabs
-        d.line((x1, y2 + 7, x1 + 60, y2 + 7), fill="#ff2236", width=3)
-        d.text(((x1 + x2) / 2, (y1 + y2) / 2), "CLICK TO CALL", fill="#ff5b68", font=f, anchor="mm")
-    else:
-        d.rounded_rectangle((x1, y1, x2, y2), 29, fill="#e3263f")
-        d.text(((x1 + x2) / 2, (y1 + y2) / 2), "Click to call", fill="white", font=f, anchor="mm")
-    return img
-
-
 def _style_preview(style):
     """Little picture of each box style around a fake button."""
     from PIL import ImageFont
     W, H = 440, 148
-    img = Image.new("RGB", (W, H), "#211518")
+    img = Image.new("RGB", (W, H), T.CARD_2)
     d = ImageDraw.Draw(img)
     try:
         f = ImageFont.truetype("segoeui.ttf", 26)
@@ -928,9 +884,9 @@ def _style_preview(style):
     bx1, by1, bx2, by2 = 110, 46, 330, 102
     d.rounded_rectangle((bx1, by1, bx2, by2), 8, fill="#3a3a3a")
     d.text(((bx1 + bx2) / 2, (by1 + by2) / 2), "Add Component", fill="#e0e0e0", font=f, anchor="mm")
-    if style in ("glow", "neon"):
+    if style == "neon":
         from .glowbox import render, GLOW
-        g = render(bx2 - bx1 + 16, by2 - by1 + 16, "", style=style)
+        g = render(bx2 - bx1 + 16, by2 - by1 + 16, "", kind="button")
         img.paste(g, (bx1 - 8 - GLOW, by1 - 8 - GLOW), g)
     else:
         red = config.BOX_COLOR

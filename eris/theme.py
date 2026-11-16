@@ -1,68 +1,42 @@
-"""Eris's look. Two themes (Settings, then Eris, then Look):
-- crimson: deep near-black with crimson accents, soft rounded shapes;
-- neon: a neon-red HUD: black, glowing red lines, sharp corners, a condensed font.
-apply() runs once at start-up, before any window is built."""
+"""Eris's look: a neon-red HUD. Black, glowing red lines, sharp corners, a condensed font,
+and streaks of red light across the top of the window."""
 import random
 import sys
 
-NAME = "crimson"
-FONT = "Segoe UI" if sys.platform == "win32" else "DejaVu Sans"
-RADIUS = None           # None: shapes as designed; a number: no corner rounder than that
+FONT = "Bahnschrift" if sys.platform == "win32" else "DejaVu Sans Condensed"
+RADIUS = 3              # no corner rounder than this: the HUD keeps its corners sharp
 
-BG = "#0d0809"          # window background
-CARD = "#170f11"        # cards / chat area
-CARD_2 = "#211518"      # Eris bubbles, inputs
-BORDER = "#2e1a1f"
-ACCENT = "#e3263f"      # crimson
-ACCENT_HOVER = "#c01c33"
-ACCENT_DIM = "#4a1520"  # your bubbles
-GLOW = "#ff4d63"
-TEXT = "#f6ecee"
-MUTED = "#9b8a8f"
-GOLD = "#e6b85c"
+BG = "#040102"          # window background
+CARD = "#0a0304"        # cards / chat area
+CARD_2 = "#120507"      # Eris bubbles, inputs
+BORDER = "#6b1019"
+ACCENT = "#ff2236"      # neon red
+ACCENT_HOVER = "#c9182a"
+ACCENT_DIM = "#3d0910"  # your bubbles
+GLOW = "#ff5b68"
+TEXT = "#ffe4e1"
+MUTED = "#b8706c"
+GOLD = "#ffb04a"
 ERROR = "#ff8a8a"
-CAPTION_BG = "#1a0a0e"
+CAPTION_BG = "#130306"
 
-NEON = {
-    "FONT": "Bahnschrift" if sys.platform == "win32" else "DejaVu Sans Condensed",
-    "RADIUS": 3,
-    "BG": "#040102", "CARD": "#0a0304", "CARD_2": "#120507", "BORDER": "#6b1019",
-    "ACCENT": "#ff2236", "ACCENT_HOVER": "#c9182a", "ACCENT_DIM": "#3d0910", "GLOW": "#ff5b68",
-    "TEXT": "#ffe4e1", "MUTED": "#b8706c", "GOLD": "#ffb04a", "ERROR": "#ff8a8a", "CAPTION_BG": "#130306",
+STATES = {  # state -> (label, dot colour)
+    "loading": ("Waking up", MUTED),
+    "ready": ("Ready", "#4fd18b"),
+    "listening": ("Listening", GLOW),
+    "thinking": ("Thinking", GOLD),
+    "guiding": ("Guiding", ACCENT),
+    "off": ("Paused", MUTED),
 }
-CRIMSON = {k: globals()[k] for k in NEON}
-THEMES = ("crimson", "neon")
-
-
-def _states():
-    return {  # state -> (label, dot colour)
-        "loading": ("Waking up", MUTED),
-        "ready": ("Ready", "#4fd18b"),
-        "listening": ("Listening", GLOW),
-        "thinking": ("Thinking", GOLD),
-        "guiding": ("Guiding", ACCENT),
-        "off": ("Paused", MUTED),
-    }
-
-
-STATES = _states()
-
-
-def apply(name):
-    """Switch to a theme (before any window or font is made)."""
-    global NAME, STATES
-    NAME = name if name in THEMES else "crimson"
-    globals().update(NEON if NAME == "neon" else CRIMSON)
-    STATES = _states()
 
 
 def r(n):
-    """A corner radius in this theme: the neon HUD keeps corners sharp."""
-    return n if RADIUS is None else min(n, RADIUS)
+    """A corner radius, kept HUD-sharp."""
+    return min(n, RADIUS)
 
 
 def streaks(w, h, seed=7, density=1.0):
-    """Sparse streaks of red light on black, with soft red glows behind (the neon look's
+    """Sparse streaks of red light on black, with soft red glows behind (the
     banner). Wraps around seamlessly left-right, so it can scroll forever."""
     from PIL import Image, ImageChops, ImageDraw, ImageFilter
     rnd = random.Random(seed)
@@ -113,7 +87,7 @@ def font(size=13, weight="normal", underline=False, family=None):
 
 
 def tint_titlebar(win):
-    """Dark crimson-black title bar on Windows 11 so the window looks seamless."""
+    """A black title bar with a red outline on Windows 11, so the window looks seamless."""
     if sys.platform != "win32":
         return
     try:
@@ -130,7 +104,7 @@ def tint_titlebar(win):
         dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(caption), 4)     # title bar colour
         r, g, b = (int(ACCENT[i:i + 2], 16) for i in (1, 3, 5))
         border = ctypes.c_int(r | g << 8 | b << 16)
-        dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(border), 4)      # crimson outline
+        dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(border), 4)      # red outline
     except Exception:
         pass
 

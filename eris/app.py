@@ -1,4 +1,4 @@
-"""The Eris window: chat bubbles, talk button, settings. Crimson on near-black."""
+"""The Eris window: chat bubbles, talk button, settings. Neon red on black."""
 import gc
 import os
 import queue
@@ -31,7 +31,7 @@ SUGGESTIONS = ["How do I add a Rigidbody in Unity?", "Take me to Wikipedia",
 
 
 class Avatar(tk.Canvas):
-    """Glowing crimson orb with an E. Pulses while listening/thinking."""
+    """Glowing red orb with an E. Pulses while listening/thinking."""
 
     def __init__(self, master, size=54):
         super().__init__(master, width=size, height=size, bg=T.BG, highlightthickness=0)
@@ -86,7 +86,6 @@ class Avatar(tk.Canvas):
 class App(ctk.CTk):
     def __init__(self):
         settings.load()
-        T.apply(config.THEME)
         ctk.set_appearance_mode("dark")
         super().__init__(fg_color=T.BG)
         self.title("Eris")
@@ -201,10 +200,8 @@ class App(ctk.CTk):
     # ---------- layout ----------
     def _build(self):
         # header: avatar, name, status chip
-        self.banner = None
-        if T.NAME == "neon":    # streaks of red light drifting across the top
-            from .glitch import Banner
-            self.banner = Banner(self).pack(fill="x")
+        from .glitch import Banner
+        self.banner = Banner(self).pack(fill="x")    # streaks of red light drifting across the top
         top = ctk.CTkFrame(self, fg_color="transparent")
         top.pack(fill="x", padx=18, pady=(16, 8))
         self.avatar = Avatar(top)
@@ -230,7 +227,7 @@ class App(ctk.CTk):
                                         fg_color="#1f6b45", hover_color="#185437",
                                         font=font(12, "bold"), command=self.do_update)
 
-        # thin crimson line
+        # thin red line
         ctk.CTkFrame(self, fg_color=T.ACCENT, height=2, corner_radius=T.r(1)).pack(fill="x", padx=18)
 
         row = ctk.CTkFrame(self, fg_color="transparent")
@@ -517,7 +514,7 @@ class App(ctk.CTk):
         self.chip_text.configure(text=label)
         self.chip_dot.configure(fg_color=colour)
         self.avatar.pulse(state in ("listening", "thinking"))
-        if self.banner and state in ("listening", "guiding") and state != getattr(self, "_last_state", None):
+        if state in ("listening", "guiding") and state != getattr(self, "_last_state", None):
             self.banner.burst()          # a glitch as she starts listening / talking
         self._last_state = state
         on_call = getattr(self, "on_call", False)

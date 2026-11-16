@@ -175,6 +175,8 @@ class Eris:
         """One step. soft=True is an automatic look: the current box stays up
         unless the brain has something new to say (it can reply KEEP)."""
         alive = lambda: my == self.gen
+        t0 = time.time()
+        times = {}   # how long each part took, for the speed log
         if not soft:
             self.ui.cmd("status", "Looking...")
             self.ui.cmd("state", "thinking")
@@ -189,6 +191,7 @@ class Eris:
                 self.waiting = self.waiting or "next"
             return
         shot = self._take_shot(allow_pre)
+        times["screenshot"] = time.time() - t0
         if not alive():
             return
         self.mon = (shot.left, shot.top, shot.width, shot.height)
@@ -238,6 +241,12 @@ class Eris:
         def on_event(ev):
             if not alive() or st["kept"]:
                 return
+            now = time.time() - t0
+            times.setdefault("first reply", now)
+            if ev.kind == "box":
+                times.setdefault("box", now)
+            elif ev.kind == "say":
+                times.setdefault("first words", now)
             if ev.kind == "fail":
                 if soft:   # a hiccup during an automatic look: just keep waiting
                     self.ui.log("debug", f"automatic look failed: {ev.value}")
@@ -301,6 +310,9 @@ class Eris:
         if soft:
             self.ui.cmd("status", "Checking...")
         self.brain.turn(shot, text, on_event, alive)
+        times["done"] = time.time() - t0
+        self.ui.log("debug", "speed: " + " · ".join(f"{k} {v:.2f}s" for k, v in times.items())
+                    + f" ({config.BRAIN}{', automatic look' if soft else ''})")
         if st["avatar"] and st["final"]:
             threading.Thread(target=self._take_avatar, args=(shot, st, my), daemon=True).start()
         if not alive():

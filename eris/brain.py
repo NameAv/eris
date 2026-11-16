@@ -39,7 +39,8 @@ becomes your picture in the app.
 Treat them as a complete beginner. Never assume they know names, spellings, web \
 addresses, shortcuts or jargon.
 
-Reply with ONLY these lines, in this order, nothing else (no markdown):
+Reply with ONLY these lines, in this order, nothing else (no markdown, no XML tags, no \
+notes to yourself):
 BOX x1 y1 x2 y2   - pixel coords in the CURRENT screenshot of the ONE thing to click or \
 type into now (see "Boxes" below). Or NOBOX if nothing needs pointing at.
 WHAT <words>      - right after BOX: a short, specific description of that exact element, \
@@ -197,7 +198,7 @@ class Brain:
             req = dict(max_tokens=0, system=self._system(), messages=messages,
                        output_config={"effort": config.EFFORT})
             if config.BRAIN == "claude-cheap":
-                client.messages.create(model=config.CHEAP_MODEL, **req)
+                client.messages.create(model=config.CHEAP_MODEL, **req, **no_thinking())
             else:
                 client.beta.messages.create(model=config.MODEL, betas=["server-side-fallback-2026-07-01"],
                                             fallbacks="default", **req)
@@ -262,7 +263,7 @@ class Brain:
         reply = []
         try:
             if config.BRAIN == "claude-cheap":
-                cm = client.messages.stream(model=config.CHEAP_MODEL, **common)
+                cm = client.messages.stream(model=config.CHEAP_MODEL, **common, **no_thinking())
             else:
                 extra = {"speed": "fast"} if config.FAST_MODE else {}
                 cm = client.beta.messages.stream(
@@ -349,6 +350,14 @@ VIBES = {
 }
 
 
+def no_thinking():
+    """On the Cheap brain, Low means no hidden thinking at all: the answer starts
+    straight away. (Medium/High still think, if steps start going wrong.)"""
+    if config.BRAIN == "claude-cheap" and config.EFFORT == "low":
+        return {"thinking": {"type": "disabled"}}
+    return {}
+
+
 def memory_text():
     """The part of the instructions that changes: her vibe, your name, her memories.
     Kept after the cached block so changing it doesn't cost the cache."""
@@ -402,7 +411,8 @@ def locate(brain, shot, box, what, alive):
                                                         "media_type": "image/jpeg", "data": b64}},
                            {"type": "text", "text": prompt}]}])
             if config.BRAIN == "claude-cheap":
-                msg = client.messages.create(model=config.CHEAP_MODEL, **req)
+                msg = client.messages.create(model=config.CHEAP_MODEL, **req,
+                                             thinking={"type": "disabled"})
             else:
                 msg = client.beta.messages.create(
                     model=config.MODEL, betas=["server-side-fallback-2026-07-01"],

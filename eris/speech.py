@@ -41,6 +41,7 @@ class Voice:
         self.warned = False
         self.natural_off_until = 0.0   # after a failure, use the Windows voice for a bit
         self.playing = False           # a natural-voice clip is playing right now
+        self._first = None             # (gen, time) of the first line queued since the last stop
         self.sapi_speaking = False     # the Windows voice is speaking right now
         threading.Thread(target=self.prepare_acks, daemon=True).start()
         threading.Thread(target=self._synth_loop, daemon=True).start()
@@ -52,6 +53,8 @@ class Voice:
         """voice: a specific natural voice for this line (used by the preview button)."""
         if not (config.VOICE_ON or force):
             return
+        if self._first is None or self._first[0] != self.gen:
+            self._first = (self.gen, time.time())
         if self._natural():
             self.text_q.put((self.gen, text, voice))
         else:
@@ -156,6 +159,10 @@ class Voice:
             if g != self.gen:
                 continue
             self.playing = True
+            if self._first and self._first[0] == g and "ack" not in os.path.basename(path):
+                self.log("debug", f"speed: voice started {time.time() - self._first[1]:.2f}s "
+                                  "after her first line arrived (natural voice)")
+                self._first = (None, 0)
             mci(f'open "{path}" type mpegvideo alias eris', None, 0, None)
             mci("play eris", None, 0, None)
             time.sleep(0.05)

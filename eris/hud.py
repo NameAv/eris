@@ -8,7 +8,7 @@ plus the drag connector, its "drop here" tab, and plates for "scroll down" / "pr
 Every picture is drawn sharp at twice the size, shrunk, and given a soft red glow."""
 import math
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 
 from . import config
 
@@ -150,16 +150,23 @@ def _panel(cv, x1, y1, x2, y2, red, alpha):
 SHAPES = {"ring": _ring, "bar": _bar, "frame": _frame, "panel": _panel}
 
 
-def _plate(cv, x, y, text, size, red, arrow=None):
-    """An angular red plate with white text (the "type:" hint, notes, "drop here")."""
+def _plate(cv, x, y, text, size, red, arrow=None, prefix=None):
+    """The one label design: an angular, solid red plate with white text and a little end
+    bracket ("DROP HERE", "DRAG", the notes, what to type). prefix: a small pale word
+    before the text (e.g. TYPE). Returns its size."""
+    small = max(9, int(size * 0.55))
+    pw = cv.text_width(prefix, small) + 10 if prefix else 0
     tw = cv.text_width(text, size)
-    aw = 26 if arrow else 0
-    w, h = tw + aw + 22, size + 12
-    cv.poly(_cut(x, y, x + w, y + h, 6), red + (235,))
-    cv.line([(x + w + 3, y + 3), (x + w + 3, y + h - 3)], red + (255,), 2)           # a little end bracket
+    aw = size + 10 if arrow else 0
+    w, h = pw + aw + tw + 22, size + 12
+    cv.poly(_cut(x, y, x + w, y + h, 6), red + (240,))
+    cv.line([(x + w + 3, y + 3), (x + w + 3, y + h - 3)], red + (255,), 2)           # the end bracket
     tx = x + 11
+    if prefix:
+        cv.text((tx, y + h / 2), prefix, small, (255, 205, 205, 255), anchor="lm")
+        tx += pw
     if arrow:
-        _chevrons(cv, tx + 9, y + h / 2, arrow, WHITE + (255,), 7)
+        _chevrons(cv, tx + size / 2 - 1, y + h / 2, arrow, WHITE + (255,), max(6, size * 0.45))
         tx += aw
     cv.text((tx, y + h / 2), text, size, WHITE + (255,), anchor="lm")
     return w, h
@@ -174,127 +181,75 @@ def _chevrons(cv, cx, cy, way, colour, s):
                  for px, py in pts], colour, 2.5)
 
 
-def banner(text, glitch=0):
-    """The word to type, as a punk neon banner: a slanted plate with a TYPE tag and the
-    word in glowing red, with ghosts, slipped slices and scanlines. glitch: 0 = calm
-    (a little glitched), any other number = a stronger glitch (different every number)."""
-    import random
-    red = _red()
-    rnd = random.Random(glitch * 7919 + len(text))
-    f, tag_f = _font(21), _font(11)
-    tw = int(f.getlength(text))
-    tag_w = int(tag_f.getlength("TYPE")) + 18
-    m, slant, H = 12, 10, 36
-    W = tag_w + tw + 44
-    img = Image.new("RGBA", (W + 2 * m, H + 2 * m), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    x0, y0 = m, m
-    plate = [(x0 + slant, y0), (x0 + W, y0), (x0 + W - slant, y0 + H), (x0, y0 + H)]
-    d.polygon(plate, fill=DARK + (235,))
-    d.line(plate + [plate[0]], fill=red + (255,), width=2)
-    d.polygon([(x0 + slant, y0), (x0 + slant + tag_w, y0), (x0 + tag_w, y0 + H), (x0, y0 + H)],
-              fill=red + (255,))                                            # the TYPE tag
-    d.text((x0 + slant / 2 + tag_w / 2, y0 + H / 2), "TYPE", font=tag_f, fill=DARK + (255,), anchor="mm")
-    for i in range(3):                                                      # /// at the end
-        sx = x0 + W - 22 + i * 5
-        d.line((sx, y0 + H - 6, sx + 5, y0 + 6), fill=red + (150,), width=1)
-    # the word: drawn on its own layer so it can be glitched
-    tx, ty = x0 + tag_w + 14, y0 + H / 2
-    mask = Image.new("L", img.size, 0)
-    ImageDraw.Draw(mask).text((tx, ty), text, font=f, fill=255, anchor="lm")
-    strength = 1 if not glitch else 3
-    for _ in range(rnd.randint(2, 4) if glitch else 0):                      # slices slip sideways
-        y1 = rnd.randint(int(ty - 11), int(ty + 8))
-        y2 = min(int(ty + 11), y1 + rnd.randint(2, 6))
-        band = mask.crop((0, y1, mask.width, y2))
-        mask.paste(0, (0, y1, mask.width, y2))
-        mask.paste(band, (rnd.randint(-2 * strength, 2 * strength), y1))
-    glow = Image.new("RGBA", img.size, red + (0,))
-    glow.putalpha(mask.filter(ImageFilter.GaussianBlur(3)).point(lambda v: min(255, int(v * 1.3))))
-    img = Image.alpha_composite(img, glow)
-    ghosts = ((6, 0, (255, 60, 170, 150)), (-3, 1, (110, 0, 20, 200))) if glitch else ((2, 0, (255, 60, 170, 70)),)
-    for dx, dy, col in ghosts:
-        ghost = Image.new("RGBA", img.size, col[:3] + (0,))                   # magenta and dark ghosts
-        ghost.putalpha(mask.point(lambda v, a=col[3]: v * a // 255))
-        img = Image.alpha_composite(img, ghost.transform(img.size, Image.AFFINE, (1, 0, -dx, 0, 1, -dy)))
-    core = Image.new("RGBA", img.size, (255, 58, 78, 0))
-    lines = Image.new("L", img.size, 255)
-    ld = ImageDraw.Draw(lines)
-    for y in range(0, img.height, 3):                                       # scanlines
-        ld.line((0, y, img.width, y), fill=175 if glitch else 225)
-    core.putalpha(ImageChops.multiply(mask, lines))
-    img = Image.alpha_composite(img, core)
-    if glitch:                                                              # data blocks
-        bd = ImageDraw.Draw(img)
-        for _ in range(rnd.randint(2, 4)):
-            bx, by = rnd.randint(tx, x0 + W - 10), rnd.randint(y0 + 2, y0 + H - 4)
-            bd.rectangle((bx, by, bx + rnd.randint(4, 18), by + rnd.randint(1, 3)),
-                         fill=(255, 40, 60, 220) if rnd.random() < 0.7 else (255, 210, 210, 230))
-    return img
+def label(text, size=17, prefix=None, arrow=None):
+    """A plate on its own transparent picture, with the glow (what to type, the notes)."""
+    probe = _Canvas(1, 1)
+    small = max(9, int(size * 0.55))
+    w = probe.text_width(text, size) + (probe.text_width(prefix, small) + 10 if prefix else 0) \
+        + (size + 10 if arrow else 0) + 22
+    m = 10
+    cv = _Canvas(w + 2 * m + 6, size + 12 + 2 * m)
+    _plate(cv, m, m, text, size, _red(), arrow, prefix)
+    return cv.finish()
 
 
-def box(w, h, hint="", grow=0, glow_margin=16, kind=None, glitch=0):
+def box(w, h, hint="", grow=0, glow_margin=16, kind=None):
     """The HUD box for a w x h target, laid out like glowbox.render (target at
-    glow_margin, glow_margin). What to type hangs under it as a neon banner."""
+    glow_margin, glow_margin). What to type hangs under it on a red plate."""
     red = _red()
     G = glow_margin
     kind = shape_for(w, h, kind)
-    tag = banner(hint, glitch) if hint else None
-    width = w + 2 * G if tag is None else max(w + 2 * G, G - 12 + tag.width)
+    tag = label(hint, 17, prefix="TYPE") if hint else None
+    width = w + 2 * G if tag is None else max(w + 2 * G, G - 10 + tag.width)
     cv = _Canvas(width, h + 2 * G + (tag.height - 6 if tag else 0))
     x1, y1, x2, y2 = G - grow, G - grow, G + w + grow, G + h + grow
     SHAPES[kind](cv, x1, y1, x2, y2, red, 255)
     img = cv.finish()
     if tag:
-        img.alpha_composite(tag, (max(0, G - 12), G + h + 2))
+        img.alpha_composite(tag, (max(0, G - 10), G + h + 2))
     return img
 
 
 # ---------------- drag, notes ----------------
 DROP_FRAMES = 12         # the drag beam is animated: its streaks flow toward the target
-BEAM = 30                # how wide the beam of light streaks is
-ROOM = 16                # space each side of it, for glitches to jump into
+BEAM = 14                # how wide the beam of light streaks is, at most
+ROOM = 8                 # space each side of it, for glitches to jump into
 
 
 def _beam(length, frame, glitch):
-    """A strip of red light streaks (the banner's texture), `length` long, as RGBA:
-    rolled along so the streaks flow forward, soft at the edges; when glitching, chunks
-    jump sideways, a pink ghost splits off and blocks scatter. Lies along +x (drop()
-    turns it toward the target)."""
+    """A narrow strip of red light streaks (the banner's texture), `length` long, as
+    RGBA: the streaks flow forward, its width swells and thins along it and over time,
+    soft at the edges and not too bright; when glitching, a few chunks jump sideways and
+    small blocks flicker. Lies along +x (drop() turns it toward the target)."""
     import random
     import numpy as np
     from . import theme
     L = max(8, int(length))
-    tex = np.asarray(theme.streaks(L, BEAM, seed=11, density=2.6), dtype=np.float32)
+    tex = np.asarray(theme.streaks(L, BEAM, seed=11, density=3.4), dtype=np.float32)
     tex = np.roll(tex, int(frame * L / DROP_FRAMES / 3) % L, axis=1)     # flowing toward the target
-    across = np.sin(np.linspace(0, np.pi, BEAM)) ** 0.6                     # soft sides
-    along = np.clip(np.minimum(np.arange(L), L - 1 - np.arange(L)) / 18.0, 0.35, 1)  # soft ends
-    alpha = np.clip(tex.max(axis=2) * 2.0, 0, 255) * across[:, None] * along[None, :]
+    x = np.arange(L)
+    t = frame / DROP_FRAMES * 2 * np.pi
+    width = 0.62 + 0.22 * np.sin(x / 37.0 + t) + 0.14 * np.sin(x / 13.0 - 2 * t)  # breathing width
+    rows = np.abs(np.linspace(-1, 1, BEAM))[:, None]
+    across = np.clip(1 - rows / np.maximum(width, 0.15)[None, :], 0, 1) ** 0.8
+    along = np.clip(np.minimum(x, L - 1 - x) / 18.0, 0.3, 1)                    # soft ends
+    alpha = np.clip(tex.max(axis=2) * 2.4, 0, 235) * across * along[None, :]
+    mid = BEAM // 2                                                             # a faint core: the path
+    alpha[mid - 1:mid + 1] = np.maximum(alpha[mid - 1:mid + 1], 95 * along[None, :])
+    tex[mid - 1:mid + 1] = np.maximum(tex[mid - 1:mid + 1], [200, 30, 45])
     H = BEAM + 2 * ROOM
     rgba = np.zeros((H, L, 4), dtype=np.float32)
-    rgba[ROOM:ROOM + BEAM, :, :3] = np.clip(tex * 1.35, 0, 255)
+    rgba[ROOM:ROOM + BEAM, :, :3] = np.clip(tex * 1.4, 0, 255)
     rgba[ROOM:ROOM + BEAM, :, 3] = alpha
     if glitch:
         rnd = random.Random(frame * 37)
-        ghost = np.roll(rgba, rnd.choice((-6, -4, 4, 6)), axis=0)           # a pink ghost
-        ghost[..., :3] = [255, 60, 170]
-        ghost[..., 3] *= 0.45
-        for _ in range(rnd.randint(3, 6)):                                 # chunks jump sideways
+        for _ in range(rnd.randint(2, 4)):                                 # a few chunks jump sideways
             c1 = rnd.randrange(0, L)
-            c2 = min(L, c1 + rnd.randint(10, max(12, L // 6)))
+            c2 = min(L, c1 + rnd.randint(8, max(10, L // 8)))
             rgba[:, c1:c2] = np.roll(rgba[:, c1:c2], rnd.randint(-ROOM + 2, ROOM - 2), axis=0)
-        for _ in range(rnd.randint(1, 3)):                                 # and blink out
-            c1 = rnd.randrange(0, L)
-            rgba[:, c1:c1 + rnd.randint(4, 14), 3] = 0
-        out = ghost.copy()                                                 # beam over its ghost
-        a = rgba[..., 3:] / 255.0
-        out[..., :3] = rgba[..., :3] * a + ghost[..., :3] * (1 - a)
-        out[..., 3] = np.maximum(rgba[..., 3], ghost[..., 3])
-        rgba = out
-        for _ in range(rnd.randint(6, 12)):                                # hot blocks
-            bx, by = rnd.randrange(0, L), rnd.randrange(0, H - 3)
-            rgba[by:by + rnd.randint(2, 4), bx:bx + rnd.randint(5, 26)] = \
-                [255, 40, 60, 235] if rnd.random() < 0.7 else [255, 200, 210, 230]
+        for _ in range(rnd.randint(2, 5)):                                 # small blocks flicker
+            bx, by = rnd.randrange(0, L), rnd.randrange(0, H - 2)
+            rgba[by:by + 2, bx:bx + rnd.randint(4, 14)] = [255, 40, 60, 200]
     return Image.fromarray(np.clip(rgba, 0, 255).astype(np.uint8), "RGBA")
 
 
@@ -345,25 +300,8 @@ def drop(src, dst, frame=0):
 
 
 def note(text, way=None):
-    """A HUD plate for "scroll down" / "press Ctrl + S", with an outer bracket frame."""
-    red = _red()
-    text = text.upper()
-    probe = _Canvas(1, 1)
-    w = probe.text_width(text, 16) + (34 if way else 0) + 30
-    h = 40
-    m = 14
-    cv = _Canvas(w + 2 * m, h + 2 * m)
-    x1, y1, x2, y2 = m, m, m + w, m + h
-    cv.poly(_cut(x1, y1, x2, y2, 9), DARK + (235,), red + (255,), 2)                # the plate
-    cv.line(_cut(x1 - 5, y1 - 5, x2 + 5, y2 + 5, 12), red + (110,), 1, closed=True)  # outer frame
-    cv.line([(x1 + 12, y1 - 5), (x1 + 50, y1 - 5)], red + (255,), 3)                 # accent strips
-    cv.line([(x2 - 50, y2 + 5), (x2 - 12, y2 + 5)], red + (255,), 3)
-    tx = x1 + 15
-    if way:
-        _chevrons(cv, tx + 10, (y1 + y2) / 2, way, red + (255,), 9)
-        tx += 34
-    cv.text((tx, (y1 + y2) / 2), text, 16, WHITE + (255,), anchor="lm")
-    return cv.finish()
+    """ "scroll down" / "press Ctrl + S": the same red plate, a little bigger."""
+    return label(text.upper(), 17, arrow=way)
 
 
 def _edge(rect, toward):

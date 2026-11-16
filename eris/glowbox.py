@@ -4,7 +4,6 @@ pop-in and a gentle pulse. Drawn as an image and shown in a click-through
 goes wrong and the overlay falls back to the plain bars.
 """
 import math
-import random
 import time
 
 import numpy as np
@@ -29,13 +28,13 @@ def _rgb(hexcol):
     return tuple(int(hexcol[i:i + 2], 16) for i in (1, 3, 5))
 
 
-def render(w, h, hint="", grow=0, style=None, kind=None, glitch=0):
+def render(w, h, hint="", grow=0, style=None, kind=None):
     """RGBA image of the box for a w x h target, with the glow around it.
     grow: draw the box this many px bigger (for the pop-in). style "neon": the HUD
     box (hud.py), whose shape suits the target; otherwise the rounded glowing box."""
     if (style or config.BOX_STYLE) == "neon":
         from . import hud
-        return hud.box(w, h, hint, grow, GLOW, kind, glitch)
+        return hud.box(w, h, hint, grow, GLOW, kind)
     red = _rgb(config.BOX_COLOR)
     W, H = w + 2 * GLOW, h + 2 * GLOW
     radius = max(4, min(10, min(w, h) // 3))
@@ -243,7 +242,6 @@ class GlowBox:
         ex = u32.GetWindowLongW(self.hwnd, -20)
         u32.SetWindowLongW(self.hwnd, -20, ex | 0x80000 | 0x20 | 0x80 | 0x8000000 | 0x8)
         self.rect, self.hint, self.alpha, self.kind = None, "", 255, None
-        self.glitch, self.next_glitch = 0, 0.0    # Neon: the type banner glitches now and then
         self.jobs = []
         self.shown_at = 0.0
         if not self._show_image(Image.new("RGBA", (2, 2), (0, 0, 0, 0)), -32000, -32000):
@@ -280,7 +278,7 @@ class GlowBox:
 
     def _draw(self, grow=0, alpha=255):
         x1, y1, x2, y2 = self.rect
-        img = render(x2 - x1, y2 - y1, self.hint, grow, kind=self.kind, glitch=self.glitch)
+        img = render(x2 - x1, y2 - y1, self.hint, grow, kind=self.kind)
         self._show_image(img, x1 - GLOW, y1 - GLOW, alpha)
         self.alpha = alpha
 
@@ -295,7 +293,6 @@ class GlowBox:
         kind: what it is ("button", "text box"...), for the HUD box's shape."""
         self._cancel()
         self.rect, self.hint, self.kind = tuple(int(v) for v in rect), hint, kind
-        self.glitch, self.next_glitch = 0, 0.0
         self.shown_at = time.time()
         frames = [(10, 90), (6, 160), (3, 220), (1, 250), (0, 255)]
         for i, (grow, alpha) in enumerate(frames):
@@ -343,24 +340,7 @@ class GlowBox:
 
     def _pulse(self):
         """Gentle breathing glow so it stays noticeable without being annoying."""
-        now = time.time()
-        if self.rect and now - self.shown_at > 0.3:
-            t = now - self.shown_at
+        if self.rect and time.time() - self.shown_at > 0.3:
+            t = time.time() - self.shown_at
             self._set_alpha(205 + 50 * (0.5 + 0.5 * math.cos(t * 2 * math.pi / 1.6)))
-            self._glitch_hint(now)
         self.master.after(70, self._pulse)
-
-    def _glitch_hint(self, now):
-        """Neon look: the what-to-type banner glitches for a moment every few seconds."""
-        if not (self.hint and config.BOX_STYLE == "neon" and config.GLITCH):
-            return
-        if self.glitch and now >= self.next_glitch:          # the glitch is over
-            self.glitch, self.next_glitch = 0, now + random.uniform(2.5, 6.0)
-        elif not self.glitch and now >= self.next_glitch and self.next_glitch:
-            self.glitch, self.next_glitch = random.randint(1, 999), now + random.uniform(0.15, 0.3)
-        elif not self.next_glitch:
-            self.next_glitch = now + random.uniform(1.5, 4.0)
-            return
-        else:
-            return
-        self._draw(alpha=self.alpha)

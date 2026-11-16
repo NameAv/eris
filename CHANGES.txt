@@ -1,3 +1,4 @@
+v1.18.3: Neon HUD labels share one design: solid red plates for what to type, drag, drop here, shortcuts and scrolling. The drag beam is narrower and calmer, and its width gently swells and thins.
 v1.18.2: The drag line is now a beam of flowing red light streaks (like the banner) with an arrowhead; now and then it glitches: chunks tear sideways, a pink ghost, hot blocks.
 v1.18.1: The drag line is now one long glowing line with an arrowhead; the glitches happen on the line itself.
 v1.18.0: Neon HUD: what to type is now a glitching neon banner under the box, and the drag line flows toward the target with cyberpunk glitches (Glitch effects turns the glitches off).

@@ -99,10 +99,14 @@ def test_hud_shapes():
     check("HUD drag: one picture with room for the DROP HERE tab beside the target",
           x <= 100 and x + img.width >= 200 + 80)
     check("HUD notes draw", glowbox.render_note("scroll down", "down").width > glowbox.render_note("ok").width)
-    calm, wild = np.asarray(hud.banner("rigidbody", 0)), np.asarray(hud.banner("rigidbody", 7))
-    check("what to type: a neon banner that glitches", calm.shape == wild.shape and not np.array_equal(calm, wild))
-    check("...calm is the same every time (no flicker between glitches)",
-          np.array_equal(calm, np.asarray(hud.banner("rigidbody", 0))))
+    typed = np.asarray(hud.label("rigidbody", 17, prefix="TYPE"))
+    plain = np.asarray(hud.label("rigidbody", 17))
+    check("what to type: the same red plate, with a small TYPE before the word",
+          typed.shape[1] > plain.shape[1] and typed.shape[0] == plain.shape[0])
+    solid = tuple(int(v) for v in typed[typed.shape[0] // 2, 15])    # on the plate, before the text
+    check("...a solid red plate, not a black one", solid[0] > 180 and solid[1] < 120 and solid[3] > 200, solid)
+    note = np.asarray(glowbox.render_note("scroll down", "down"))
+    check("notes use the same red plate", note.shape[0] == typed.shape[0])
     frames = [np.asarray(glowbox.render_drop((100, 600, 220, 630), (100, 100, 200, 124), i)[0]) for i in range(hud.DROP_FRAMES)]
     check("the drag beam's light streaks flow from frame to frame", not np.array_equal(frames[0], frames[1]))
     config.GLITCH = False
@@ -115,32 +119,19 @@ def test_hud_shapes():
 
 def test_hud_animation():
     """The on-screen animation bits (Windows-only windows, so the drawing is stubbed)."""
-    from eris import config, glowbox
-    jobs, shown, drawn = [], [], []
+    from eris import glowbox
+    jobs, shown = [], []
     g = glowbox.GlowBox.__new__(glowbox.GlowBox)
     g.master = types.SimpleNamespace(after=lambda ms, fn: jobs.append(fn) or len(jobs),
                                      after_cancel=lambda j: None)
     g.jobs, g.rect, g.hint, g.kind, g.alpha = [], None, "", None, 255
     g._show_image = lambda img, x, y, alpha=255: shown.append(img)
-    g._draw = lambda grow=0, alpha=255: drawn.append(g.glitch)
     g.show_frames(lambda i: f"frame{i}", 3, 0, 0)
     for _ in range(5):
         jobs.pop(0)()
     check("the drag animation loops through its frames", shown == ["frame0", "frame1", "frame2", "frame0", "frame1", "frame2"])
-    config.BOX_STYLE, g.rect, g.hint, g.glitch, g.next_glitch = "neon", (0, 0, 10, 10), "rigid", 0, 0.0
-    t = 1000.0
-    for _ in range(200):          # 20 seconds of pulses
-        g._glitch_hint(t)
-        t += 0.1
-    check("the type banner glitches now and then, and calms down again",
-          any(drawn) and drawn.count(0) >= 2, drawn[:12])
-    n = len(drawn)
-    config.GLITCH = False
-    for _ in range(100):
-        g._glitch_hint(t)
-        t += 0.1
-    check("Glitch effects off: the banner stays still", len(drawn) == n)
-    config.GLITCH, config.BOX_STYLE = True, "glow"
+    g._cancel()
+    check("...and stops when it's taken down", not g.jobs)
 
 
 def test_glitch_banner():

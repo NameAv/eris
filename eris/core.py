@@ -175,9 +175,7 @@ class Eris:
     def _turn(self, my, text, soft=False, allow_pre=False):
         """One step. soft=True is an automatic look: the current box stays up
         unless the brain has something new to say (it can reply KEEP)."""
-        alive = lambda: my == self.gen
         t0 = time.time()
-        times = {}   # how long each part took, for the speed log
         if not soft:
             self.ui.cmd("status", "Looking...")
             self.ui.cmd("state", "thinking")
@@ -193,154 +191,30 @@ class Eris:
                 self.waiting = self.waiting or "next"
             return
         shot = self._take_shot(allow_pre)
-        times["screenshot"] = time.time() - t0
-        if not alive():
+        step = Step(self, my, shot, soft, t0)
+        step.times["screenshot"] = time.time() - t0
+        if not step.alive():
             return
         self.mon = (shot.left, shot.top, shot.width, shot.height)
         self.ui.cmd("monitor", *self.mon)
-        st = {"ended": False, "first": True, "kept": False, "refining": False,
-              "avatar": False, "snapped": threading.Event(), "final": None}
-
-        def refine(rough, what):
-            """Make the box exact, while she talks:
-            1. snap it onto the real edges right away (Windows' element info, or pixels),
-            2. zoom in with the AI to make sure it's the right thing,
-            3. snap again."""
-            if st["refining"]:
-                return
-            st["refining"] = True
-            st["snapped"].clear()
-
-            def move(new):
-                if not new or not alive() or max(abs(a - b) for a, b in zip(new, st["final"])) <= 1:
-                    return
-                on_screen = self.box == st["final"]
-                st["final"] = new
-                if on_screen:
-                    self.box = new
-                    self.ui.cmd("move_box", *new)
-                    if self.waiting and not self.busy:
-                        self.watcher.rebase(delay=0.3)   # the box moving isn't you doing something
-
-            def work():
-                try:
-                    start = rough
-                    quick = snap.snap(shot, rough)
-                    if quick and st["final"] == rough:
-                        move(quick)
-                        start = quick
-                    if config.REFINE and alive():
-                        tight = locate(self.brain, shot, start, what, alive)
-                        if tight and alive() and st["final"] in (rough, start):
-                            move(snap.snap(shot, tight) or tight)
-                    self.ui.log("debug", f"box: rough={rough} final={st['final']} what={what!r}")
-                except Exception as e:
-                    self.ui.log("debug", f"box refine failed: {e}")
-                finally:
-                    st["snapped"].set()
-            threading.Thread(target=work, daemon=True).start()
-
-        def on_event(ev):
-            if not alive() or st["kept"]:
-                return
-            now = time.time() - t0
-            times.setdefault("first reply", now)
-            if ev.kind in ("box", "element"):
-                times.setdefault("box", now)
-            elif ev.kind == "say":
-                times.setdefault("first words", now)
-            if ev.kind == "fail":
-                if soft:   # a hiccup during an automatic look: just keep waiting
-                    self.ui.log("debug", f"automatic look failed: {ev.value}")
-                    st["kept"] = True
-                    return
-                self._clear()
-                self.ui.log("error", ev.value)
-                self.voice.say(ev.value)
-                self.ui.cmd("state", "ready")
-                st["ended"] = True
-                return
-            if st["first"]:
-                st["first"] = False
-                if ev.kind == "keep":
-                    st["kept"] = True
-                    return
-                if soft:   # she has something new: drop the old step
-                    self.waiting = None
-                    self.auto_looks = 0
-                    self.voice.stop()
-                    if ev.kind not in ("box", "element"):
-                        self._clear()
-            if ev.kind == "element":
-                exact = elements.rect(shot.elements, ev.value)
-                if exact and shot.elements[ev.value - 1].get("src") == "ocr":
-                    exact = snap.grow(shot.full, exact, shot.left, shot.top) or exact   # word -> its button
-                if exact:   # an exact rectangle: no AI precision pass needed
-                    self.box = st["final"] = exact
-                    self.box_gen = my
-                    self.early_click = None
-                    st["refining"] = True
-                    st["snapped"].set()
-                    self.ui.cmd("box", *exact)
-                    self.ui.log("debug", f"box: element {ev.value} {shot.elements[ev.value - 1]}")
-                else:
-                    self.ui.log("debug", f"box: element {ev.value} isn't in the list")
-            elif ev.kind == "box":
-                self.box = st["final"] = shot.to_screen(ev.value)
-                self.box_gen = my
-                self.early_click = None
-                st["refining"] = False
-                self.ui.cmd("box", *self.box)
-            elif ev.kind == "what":
-                if self.box and self.box_gen == my:
-                    refine(self.box, ev.value)
-            elif ev.kind == "nobox":
-                self._clear()
-            elif ev.kind == "avatar":
-                st["avatar"] = True
-            elif ev.kind == "remember":
-                settings.remember(ev.value)
-                self.ui.log("info", f"Eris will remember: {ev.value}")
-            elif ev.kind == "type":
-                self.ui.cmd("type_hint", ev.value)
-                self.ui.log("hint", f"Type:  {ev.value}")
-            elif ev.kind == "say":
-                self.ui.cmd("status", "")
-                self.ui.cmd("state", "guiding")
-                self.ui.log("eris", ev.value)
-                self.voice.say(ev.value)
-                if self.box and self.box_gen == my:   # no WHAT line: use what she said
-                    refine(self.box, ev.value)
-            elif ev.kind in ("wait", "keep"):
-                st["ended"] = True
-                mode = ev.value if ev.kind == "wait" else "next"
-                self.waiting = mode if self.box or mode == "next" else "next"
-            elif ev.kind == "done":
-                st["ended"] = True
-                self.waiting = None
-                self.box = None
-                self.ui.cmd("clear_box")
-                self.ui.cmd("state", "ready")
-                self.steps = 0
-
         if soft:
             self.ui.cmd("status", "Checking...")
-        self.brain.turn(shot, text, on_event, alive)
-        times["done"] = time.time() - t0
-        self.ui.log("debug", "speed: " + " · ".join(f"{k} {v:.2f}s" for k, v in times.items())
+        self.brain.turn(shot, text, step.on_event, step.alive)
+        step.times["done"] = time.time() - t0
+        self.ui.log("debug", "speed: " + " · ".join(f"{k} {v:.2f}s" for k, v in step.times.items())
                     + f" ({config.BRAIN}{', automatic look' if soft else ''})")
-        if st["avatar"] and st["final"]:
-            threading.Thread(target=self._take_avatar, args=(shot, st), daemon=True).start()
-        if not alive():
+        if step.avatar and step.final:
+            threading.Thread(target=step.save_avatar, daemon=True).start()
+        if not step.alive():
             return
         self.ui.cmd("status", "")
-        if st["kept"]:
+        if step.kept:
             if not soft:   # screen was still loading: wait for it to change
                 self.waiting = self.waiting or "next"
                 self.ui.cmd("state", "guiding")
             self.watcher.rebase(delay=0.3, kept=True)   # nothing new: keep watching from here
             return
-        if not st["ended"]:
+        if not step.ended:
             self.waiting = "next"
         if self.waiting == "click" and self.early_click == my:
             self.advance()   # you already clicked the box while she was talking
@@ -425,27 +299,6 @@ class Eris:
                     self.pre_shot = (token, time.time(), shot)
         except Exception:
             self.pre_shot = None
-
-    def _take_avatar(self, shot, st):
-        """She picked a profile picture: cut it out of the screenshot (once the box
-        has snapped onto it) and make it her picture in the app."""
-        if st["refining"]:
-            st["snapped"].wait(6)
-        box = st["final"]
-        if not box or shot.full is None:
-            return
-        p = config.BOX_PADDING
-        x1, y1 = box[0] + p - shot.left, box[1] + p - shot.top
-        x2, y2 = box[2] - p - shot.left, box[3] - p - shot.top
-        if x2 - x1 < 32 or y2 - y1 < 32:
-            return
-        img = shot.full.crop((x1, y1, x2, y2))
-        side = min(img.size)               # square from the middle
-        l, t = (img.width - side) // 2, (img.height - side) // 2
-        img = img.crop((l, t, l + side, t + side)).resize((256, 256))
-        img.save(settings.AVATAR)
-        self.ui.cmd("avatar")
-        self.ui.log("info", "Eris has a new profile picture.")
 
     # ---------- call mode ----------
     @property
@@ -658,3 +511,191 @@ class Eris:
             return
         if self._is(key, config.TALK_KEY):
             self.stop_listening()
+
+
+class Step:
+    """One reply from the brain, acted on line by line as it streams in: boxes go up
+    the moment they arrive and are made exact while she's still talking."""
+
+    def __init__(self, eris, my, shot, soft, t0):
+        self.e, self.my, self.shot, self.soft, self.t0 = eris, my, shot, soft, t0
+        self.times = {}            # how long each part took, for the speed log
+        self.first = True          # no line handled yet
+        self.ended = False         # she said how this step ends (WAIT / DONE / ...)
+        self.kept = False          # nothing new: the old step stays
+        self.avatar = False        # the box is her new profile picture
+        self.refining = False
+        self.snapped = threading.Event()
+        self.final = None          # where the box ends up after refining
+
+    def alive(self):
+        return self.my == self.e.gen
+
+    def on_event(self, ev):
+        if not self.alive() or self.kept:
+            return
+        now = time.time() - self.t0
+        self.times.setdefault("first reply", now)
+        if ev.kind in ("box", "element"):
+            self.times.setdefault("box", now)
+        elif ev.kind == "say":
+            self.times.setdefault("first words", now)
+        if ev.kind == "fail":
+            return self.on_fail(ev.value)
+        if self.first:
+            self.first = False
+            if ev.kind == "keep":
+                self.kept = True
+                return
+            if self.soft:   # an automatic look found something new: drop the old step
+                e = self.e
+                e.waiting = None
+                e.auto_looks = 0
+                e.voice.stop()
+                if ev.kind not in ("box", "element"):
+                    e._clear()
+        handler = getattr(self, "on_" + ev.kind, None)
+        if handler:
+            handler(ev.value)
+
+    # ---- one method per kind of line ----
+    def on_fail(self, message):
+        e = self.e
+        if self.soft:   # a hiccup during an automatic look: just keep waiting
+            e.ui.log("debug", f"automatic look failed: {message}")
+            self.kept = True
+            return
+        e._clear()
+        e.ui.log("error", message)
+        e.voice.say(message)
+        e.ui.cmd("state", "ready")
+        self.ended = True
+
+    def on_element(self, n):
+        e, shot = self.e, self.shot
+        exact, _ = snap.element(shot, n)
+        if not exact:
+            e.ui.log("debug", f"box: element {n} isn't in the list")
+            return
+        self._show(exact)
+        self.refining = True   # an exact rectangle: no precision pass needed
+        self.snapped.set()
+        e.ui.log("debug", f"box: element {n} {shot.elements[n - 1]}")
+
+    def on_box(self, rough):
+        self._show(self.shot.to_screen(rough))
+        self.refining = False
+
+    def on_what(self, what):
+        if self._my_box():
+            self.refine(what)
+
+    def on_nobox(self, _):
+        self.e._clear()
+
+    def on_avatar(self, _):
+        self.avatar = True
+
+    def on_remember(self, fact):
+        settings.remember(fact)
+        self.e.ui.log("info", f"Eris will remember: {fact}")
+
+    def on_type(self, text):
+        self.e.ui.cmd("type_hint", text)
+        self.e.ui.log("hint", f"Type:  {text}")
+
+    def on_say(self, words):
+        e = self.e
+        e.ui.cmd("status", "")
+        e.ui.cmd("state", "guiding")
+        e.ui.log("eris", words)
+        e.voice.say(words)
+        if self._my_box():   # no WHAT line: use what she said
+            self.refine(words)
+
+    def on_wait(self, mode):
+        self.ended = True
+        self.e.waiting = mode if self.e.box or mode == "next" else "next"
+
+    def on_keep(self, _):   # KEEP after other lines: wait for you to press Next
+        self.on_wait("next")
+
+    def on_done(self, _):
+        e = self.e
+        self.ended = True
+        e.waiting = e.box = None
+        e.ui.cmd("clear_box")
+        e.ui.cmd("state", "ready")
+        e.steps = 0
+
+    # ---- the box ----
+    def _show(self, box):
+        e = self.e
+        e.box = self.final = box
+        e.box_gen = self.my
+        e.early_click = None
+        e.ui.cmd("box", *box)
+
+    def _my_box(self):
+        return self.e.box and self.e.box_gen == self.my
+
+    def refine(self, what):
+        """Make the box exact, while she talks:
+        1. snap it onto the real edges right away (Windows' element info, or pixels),
+        2. zoom in with the AI to make sure it's the right thing,
+        3. snap again."""
+        if self.refining:
+            return
+        self.refining = True
+        self.snapped.clear()
+        threading.Thread(target=self._refine, args=(self.e.box, what), daemon=True).start()
+
+    def _refine(self, rough, what):
+        e, shot = self.e, self.shot
+        try:
+            start = rough
+            quick = snap.snap(shot, rough)
+            if quick and self.final == rough:
+                self._move(quick)
+                start = quick
+            if config.REFINE and self.alive():
+                tight = locate(e.brain, shot, start, what, self.alive)
+                if tight and self.alive() and self.final in (rough, start):
+                    self._move(snap.snap(shot, tight) or tight)
+            e.ui.log("debug", f"box: rough={rough} final={self.final} what={what!r}")
+        except Exception as ex:
+            e.ui.log("debug", f"box refine failed: {ex}")
+        finally:
+            self.snapped.set()
+
+    def _move(self, new):
+        e = self.e
+        if not new or not self.alive() or max(abs(a - b) for a, b in zip(new, self.final)) <= 1:
+            return
+        on_screen = e.box == self.final
+        self.final = new
+        if on_screen:
+            e.box = new
+            e.ui.cmd("move_box", *new)
+            if e.waiting and not e.busy:
+                e.watcher.rebase(delay=0.3)   # the box moving isn't you doing something
+
+    def save_avatar(self):
+        """She picked a profile picture: cut it out of the screenshot (once the box
+        has snapped onto it) and make it her picture in the app."""
+        if self.refining:
+            self.snapped.wait(6)
+        box, shot = self.final, self.shot
+        if not box or shot.full is None:
+            return
+        p = config.BOX_PADDING
+        x1, y1 = box[0] + p - shot.left, box[1] + p - shot.top
+        x2, y2 = box[2] - p - shot.left, box[3] - p - shot.top
+        if x2 - x1 < 32 or y2 - y1 < 32:
+            return
+        img = shot.full.crop((x1, y1, x2, y2))
+        side = min(img.size)               # square from the middle
+        l, t = (img.width - side) // 2, (img.height - side) // 2
+        img.crop((l, t, l + side, t + side)).resize((256, 256)).save(settings.AVATAR)
+        self.e.ui.cmd("avatar")
+        self.e.ui.log("info", "Eris has a new profile picture.")

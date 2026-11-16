@@ -498,37 +498,11 @@ def locate(brain, shot, box, what, alive):
     prompt = f"Find: {what}\n(This image is {w}x{h} pixels.)"
     norm = config.BRAIN == "local" and local_info()["coords"] == "norm1000"
     try:
-        if config.BRAIN == "local":
-            body = {"model": config.LOCAL_MODEL, "stream": False, "keep_alive": "60m",
-                    "options": {"temperature": 0, "num_ctx": 4096, "num_predict": 40},
-                    "messages": [{"role": "system", "content": LOCATE_SYSTEM.replace(
-                                     "{COORDS}", COORDS_TEXT["norm1000" if norm else "pixels"])},
-                                 {"role": "user", "content": prompt, "images": [b64]}]}
-            if local_info()["thinking"]:
-                body["think"] = False
-            with ollama("/api/chat", body, timeout=30) as r:
-                text = json.loads(r.read()).get("message", {}).get("content", "")
-        else:
-            client = brain._get_client()
-            if not client:
-                return None
-            thinking = {"thinking": {"type": "disabled"}} if config.BRAIN == "claude-cheap" else {}
-            msg = claude(client, "create", max_tokens=2000,
-                         system=LOCATE_SYSTEM.replace("{COORDS}", COORDS_TEXT["pixels"]),
-                         output_config={"effort": "low"}, **thinking,
-                         messages=[{"role": "user", "content": [
-                             {"type": "image", "source": {"type": "base64",
-                                                          "media_type": "image/jpeg", "data": b64}},
-                             {"type": "text", "text": prompt}]}])
-            if msg.stop_reason == "refusal":
-                return None
-            text = "".join(b.text for b in msg.content if b.type == "text")
+        text = _zoom_local(b64, prompt, norm) if config.BRAIN == "local" else _zoom_claude(brain, b64, prompt)
     except Exception as e:
         brain.log("debug", f"precision pass failed: {e}")
         return None
-    if not alive():
-        return None
-    found = _parse_locate(text)
+    found = _parse_locate(text or "") if alive() else None
     if not found:
         return None
     x1, y1, x2, y2 = found
@@ -542,6 +516,33 @@ def locate(brain, shot, box, what, alive):
     p = config.BOX_PADDING
     return (int(left + x1 * sx) - p, int(top + y1 * sy) - p,
             int(left + x2 * sx) + p, int(top + y2 * sy) + p)
+
+
+def _zoom_local(b64, prompt, norm):
+    body = {"model": config.LOCAL_MODEL, "stream": False, "keep_alive": "60m",
+            "options": {"temperature": 0, "num_ctx": 4096, "num_predict": 40},
+            "messages": [{"role": "system", "content": LOCATE_SYSTEM.replace(
+                             "{COORDS}", COORDS_TEXT["norm1000" if norm else "pixels"])},
+                         {"role": "user", "content": prompt, "images": [b64]}]}
+    if local_info()["thinking"]:
+        body["think"] = False
+    with ollama("/api/chat", body, timeout=30) as r:
+        return json.loads(r.read()).get("message", {}).get("content", "")
+
+
+def _zoom_claude(brain, b64, prompt):
+    client = brain._get_client()
+    if not client:
+        return None
+    msg = claude(client, "create", max_tokens=2000, thinking={"type": "disabled"},
+                 system=LOCATE_SYSTEM.replace("{COORDS}", COORDS_TEXT["pixels"]),
+                 output_config={"effort": "low"},
+                 messages=[{"role": "user", "content": [
+                     {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
+                     {"type": "text", "text": prompt}]}])
+    if msg.stop_reason == "refusal":
+        return None
+    return "".join(b.text for b in msg.content if b.type == "text")
 
 
 def claude(client, kind, **request):

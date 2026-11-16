@@ -15,7 +15,7 @@ import sys
 
 import numpy as np
 
-from . import config
+from . import config, elements
 
 INK = 12            # how different from the background a pixel must be to count as "something"
 MAX_MOVE = 14       # an edge may move at most this many pixels (we only fix small errors)
@@ -135,6 +135,16 @@ def pixel_snap(full, box, left=0, top=0):
 
     nx1, ny1, nx2, ny2 = (int(v) for v in new)
     return (nx1 + rx1 + left - p, ny1 + ry1 + top - p, nx2 + rx1 + left + p, ny2 + ry1 + top + p)
+
+
+def element(shot, n):
+    """The exact box for ELEMENT n, or None if n isn't in her list. A word read off the
+    screen is grown out to the button it sits on. Returns (box, grown)."""
+    box = elements.rect(shot.elements, n)
+    if not box or shot.elements[n - 1].get("src") != "ocr":
+        return box, False
+    grown = grow(shot.full, box, shot.left, shot.top)
+    return grown or box, bool(grown)
 
 
 def grow(full, box, left=0, top=0, reach_x=300, reach_y=28):

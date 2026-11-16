@@ -1,5 +1,6 @@
 """Eris's settings window: a sidebar of sections, and every change saves instantly."""
 import threading
+import tkinter as tk
 import webbrowser
 
 import customtkinter as ctk
@@ -134,7 +135,13 @@ class SettingsWindow(ctk.CTkToplevel):
     def _ui(self, fn):
         """Run fn on the window's thread (called from background threads). Tk itself must
         never be touched from another thread, so this goes through the app's safe queue."""
-        self.app.cmd("run", lambda: self.winfo_exists() and fn())
+        def run():
+            try:
+                if self.winfo_exists():
+                    fn()
+            except tk.TclError:
+                pass     # you've moved to another page meanwhile: that update is no longer needed
+        self.app.cmd("run", run)
 
     def destroy(self):
         self._stop_capture()

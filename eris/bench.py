@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw, ImageFont
 
-from . import config, elements, ocr, screen, settings, snap
+from . import config, elements, ocr, protocol, screen, settings, snap
 
 W, H = 1920, 1080
 LINK, BUTTON, EDIT, LISTITEM, IMAGE = 50005, 50000, 50004, 50007, 50006
@@ -429,68 +429,79 @@ def run_test(brain, t):
     return grade(t, sc, shot, got, reply)
 
 
+def _pointed(evs, shot, fails):
+    """Where she pointed, worked out the same way Eris does: (box on screen, how)."""
+    for e in evs:
+        if e.kind == "element":
+            box, grown = snap.element(shot, e.value)
+            if not box:
+                fails.append(f"picked element {e.value}, which isn't in the list")
+                return None, f"element {e.value}"
+            how = f"element {e.value}"
+            if shot.elements[e.value - 1].get("src") == "ocr":
+                how += " (read off the screen, grown to its button)" if grown else " (read off the screen)"
+            return box, how
+        if e.kind == "box":
+            rough = shot.to_screen(e.value)
+            box = snap.pixel_snap(shot.full, rough, shot.left, shot.top) or rough
+            return box, "box (snapped)" if box != rough else "box"
+    return None, ""
+
+
+def _check_box(t, sc, box, fails, notes):
+    """Did the box land on a right answer and stay off the traps? True/False, or None."""
+    p = config.BOX_PADDING
+    inner = (box[0] + p, box[1] + p, box[2] - p, box[3] - p)
+    centre = ((inner[0] + inner[2]) / 2, (inner[1] + inner[3]) / 2)
+    for name in t.avoid:
+        if name in sc.things and _inside(centre, sc.things[name], 2):
+            fails.append(f"pointed at '{name}' (should avoid it)")
+    if not t.targets:
+        return None
+    hits = [n for n in t.targets if n in sc.things and _inside(centre, sc.things[n])]
+    if not hits:
+        fails.append("box missed: " + ", ".join(t.targets))
+        return False
+    notes.append(f"box on '{hits[0]}', overlap {_iou(inner, sc.things[hits[0]]):.0%}")
+    return True
+
+
+def _check_words(t, evs, fails):
+    """What she said and asked you to type."""
+    typed = " ".join(e.value for e in evs if e.kind == "type").lower()
+    if t.type_has and t.type_has not in typed:
+        fails.append(f"TYPE should contain '{t.type_has}' (got '{typed or 'nothing'}')")
+    fails.extend(f"TYPE contains '{bad}'" for bad in t.type_never if bad in typed)
+    said = " ".join(e.value for e in evs if e.kind == "say").lower()
+    if t.say_any and not any(w in said for w in t.say_any):
+        fails.append("SAY should mention: " + " / ".join(t.say_any))
+    fails.extend(f"SAY contains '{bad}'" for bad in t.say_never if bad in said)
+    return said
+
+
+KNOWN = protocol.BARE | protocol.WORDS | {"BOX", "ELEMENT", "WAIT"}
+
+
 def grade(t, sc, shot, got, reply):
     evs = got["events"]
     kinds = [e.kind for e in evs]
     fails, notes = [], []
     if "fail" in kinds:
         fails.append("brain error: " + next(e.value for e in evs if e.kind == "fail"))
-    # where did she point? (the same steps Eris uses: element list, or box + snapping)
-    box, how = None, ""
-    for e in evs:
-        if e.kind == "element":
-            box, how = elements.rect(shot.elements, e.value), f"element {e.value}"
-            if not box:
-                fails.append(f"picked element {e.value}, which isn't in the list")
-            elif shot.elements[e.value - 1].get("src") == "ocr":   # same as Eris: word -> its button
-                grown = snap.grow(shot.full, box, shot.left, shot.top)
-                box, how = grown or box, how + (" (read off the screen, grown to its button)" if grown
-                                                 else " (read off the screen)")
-            break
-        if e.kind == "box":
-            rough = shot.to_screen(e.value)
-            box = snap.pixel_snap(shot.full, rough, shot.left, shot.top) or rough
-            how = "box (snapped)" if box != rough else "box"
-            break
+    box, how = _pointed(evs, shot, fails)
     kind = ("keep" if "keep" in kinds and not box else "box" if box else
             "nobox" if "nobox" in kinds else "done" if "done" in kinds else "none")
     if kind not in t.expect:
         fails.append(f"expected {' or '.join(t.expect)}, got {kind}")
-    hit = None
-    if box:
-        p = config.BOX_PADDING
-        inner = (box[0] + p, box[1] + p, box[2] - p, box[3] - p)
-        centre = ((inner[0] + inner[2]) / 2, (inner[1] + inner[3]) / 2)
-        for name in t.avoid:
-            if name in sc.things and _inside(centre, sc.things[name], 2):
-                fails.append(f"pointed at '{name}' (should avoid it)")
-        if t.targets:
-            hits = [n for n in t.targets if n in sc.things and _inside(centre, sc.things[n])]
-            hit = bool(hits)
-            if not hits:
-                fails.append("box missed: " + ", ".join(t.targets))
-            else:
-                notes.append(f"box on '{hits[0]}', overlap {_iou(inner, sc.things[hits[0]]):.0%}")
+    hit = _check_box(t, sc, box, fails, notes) if box else None
     if t.wait and kind == "box":
         modes = [e.value for e in evs if e.kind == "wait"]
         if modes and modes[0] not in t.wait:
             fails.append(f"WAIT {modes[0]} (expected {' or '.join(t.wait)})")
-    types = " ".join(e.value for e in evs if e.kind == "type").lower()
-    if t.type_has and t.type_has not in types:
-        fails.append(f"TYPE should contain '{t.type_has}' (got '{types or 'nothing'}')")
-    for bad in t.type_never:
-        if bad in types:
-            fails.append(f"TYPE contains '{bad}'")
-    said = " ".join(e.value for e in evs if e.kind == "say").lower()
-    if t.say_any and not any(w in said for w in t.say_any):
-        fails.append("SAY should mention: " + " / ".join(t.say_any))
-    for bad in t.say_never:
-        if bad in said:
-            fails.append(f"SAY contains '{bad}'")
+    said = _check_words(t, evs, fails)
     if kind != "keep" and not said and "fail" not in kinds:
         fails.append("said nothing")
-    junk = [ln for ln in reply.splitlines() if ln.strip() and ln.split(" ")[0].upper().rstrip(":") not in
-            ("BOX", "NOBOX", "ELEMENT", "WHAT", "TYPE", "SAY", "WAIT", "DONE", "KEEP", "AVATAR", "REMEMBER")]
+    junk = [ln for ln in reply.splitlines() if ln.strip() and ln.split(" ")[0].upper().rstrip(":") not in KNOWN]
     if junk:
         notes.append(f"{len(junk)} off-format line(s)")
     return {"name": t.name, "category": t.category, "pass": not fails, "fails": fails, "notes": notes,

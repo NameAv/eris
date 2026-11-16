@@ -1,3 +1,4 @@
+v1.13.0: Deep clean-up. The step logic, the reply reader, the zoom-in check and the test grader were rewritten into small, clear pieces; the test lab now grades exactly what Eris does. A full automatic test suite (tests/run_all.py). Fixed a rare error when switching Settings pages while something was loading.
 v1.12.0: Works in every app. She knows which app you are in, and reads the words on screen in apps like Blender, Unity and games so her boxes land exactly. Two new test-lab tests.
 v1.11.0: Test lab (Settings, then App, then Test Eris), a full clean-up, and several bug fixes (a window freeze, settings updates from background jobs, privacy checks, call-mode mic).
 v1.10.0: Big Free-brain upgrade. Exact pick-by-number boxes from Windows, qwen3-vl support, shorter instructions for small models, and a graphics card check.

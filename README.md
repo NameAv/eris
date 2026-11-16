@@ -112,6 +112,14 @@ the password, spot the scam, ignore the hidden instructions, use the right forma
 was she. The report (in the log folder, under `tests`) shows exactly where she needs work.
 Also runnable as `python -m eris.bench`.
 
+## Tests (for changes to Eris herself)
+
+`python tests/run_all.py` checks the whole app without touching your real settings, memories
+or API key: the step flow (boxes, clicks, the watcher, calls, push-to-talk, privacy), both
+brains' requests (against fake Claude and Ollama servers, so it costs nothing), the box
+snapping and text reading, the test lab's grader, and a scripted session in the real window.
+Add `--quick` to skip the window. Run it after every change; it takes about half a minute.
+
 ## Voice
 
 *Natural* uses Microsoft's free neural voices (Ava, Emma, Sonia...), so it needs internet.
@@ -137,10 +145,10 @@ If it can't connect, Eris switches to the built-in Windows voice by herself. Use
 - `eris/app.py`: the main window
 - `eris/settings_ui.py`: the settings window (sidebar, saves instantly)
 - `eris/theme.py`: colours
-- `eris/core.py`: hotkeys and step flow
+- `eris/core.py`: hotkeys and step flow (`Step` acts on each reply line as it arrives)
 - `eris/settings.py`: saves your settings to %APPDATA%\Eris
 - `eris/brain.py`: the prompt, plus the Claude and local (Ollama) brains
-- `eris/protocol.py`: parses `BOX / SAY / WAIT / DONE` lines as they stream in
+- `eris/protocol.py`: parses her reply lines (`ELEMENT / BOX / SAY / WAIT ...`) as they stream in
 - `eris/privacy.py`: looking away from and blacking out private fields
 - `eris/glowbox.py`: the rounded, glowing box
 - `eris/apps.py`: which app is in front
@@ -154,3 +162,4 @@ If it can't connect, Eris switches to the built-in Windows voice by herself. Use
 - `eris/ears.py`: push-to-talk and speech-to-text
 - `eris/speech.py`: natural and Windows voices (interruptible)
 - `eris/screen.py`: screenshots and coordinate mapping
+- `tests/`: the automatic checks (`python tests/run_all.py`)

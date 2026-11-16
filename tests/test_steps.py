@@ -180,12 +180,19 @@ def test_waits_for_the_page_to_load():
           asked_at)
 
 
-def test_no_new_look_while_she_talks():
-    e, _, _ = make_eris()
+def test_she_keeps_it_short():
+    e, ui, _ = make_eris()
     e.waiting, e.mon = "next", (0, 0, 100, 100)
-    check("the watcher may look when she's quiet", e.watcher._ready())
     e.voice.busy = lambda: True
-    check("...but waits while she's still talking", not e.watcher._ready())
+    check("she still notices you've moved on while she's talking", e.watcher._ready())
+    e.brain.script = ["BOX 100 100 200 130\nSAY Click Images.\nSAY It's the tab under the search box.\n"
+                      "SAY Google shows pictures there, and it's a lovely way to find things, honestly my favourite.\n"
+                      "SAY Another line.\nWAIT click"]
+    e.ask("show me images")
+    wait_for(lambda: e.waiting == "click")
+    check("only the first line and a short second one are read out",
+          e.voice.said == ["Click Images.", "It's the tab under the search box."], e.voice.said)
+    check("...every line still shows in the chat", sum(1 for l in ui.logs if l[0] == "eris") == 4)
 
 
 def test_checking_a_step():

@@ -22,6 +22,7 @@ WATCH_PROMPT = ("(Automatic look: my screen changed while you were waiting.) Her
                 "with just KEEP (don't repeat the step). If I did something different, briefly "
                 "tell me and guide me back.")
 MAX_LOOKS_PER_TASK = 30
+SECOND_LINE = 90             # a second SAY line is read out only if it's this short (characters)
 
 WRONG_BOX_PROMPT = ("That box was on the wrong thing. Here's my screen again. Look carefully, "
                     "point at the right one and say what it is (so I can tell it's the one).")
@@ -741,6 +742,7 @@ class Step:
         self.snapped = threading.Event()
         self.hint = ""             # what she asked you to type (or press), shown with the box
         self.said = ""             # her first line: the instruction (kept for recipes)
+        self.spoken = 0            # SAY lines so far this step
         self.what = ""             # what she pointed at
         self.typed = self.key = ""
         self.dragged = False
@@ -863,7 +865,9 @@ class Step:
         e.ui.cmd("status", "")
         e.ui.cmd("state", "guiding")
         e.ui.log("eris", words)
-        e.voice.say(words)
+        self.spoken += 1
+        if self.spoken == 1 or (self.spoken == 2 and len(words) <= SECOND_LINE):
+            e.voice.say(words)            # the chat shows every line; only the first one or two are read out
         self.said = self.said or words
         if self._my_box():   # no WHAT line: use what she said
             self.refine(words)

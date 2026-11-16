@@ -251,16 +251,58 @@ def box(w, h, hint="", grow=0, glow_margin=16, kind=None, glitch=0):
 
 
 # ---------------- drag, notes ----------------
-DROP_FRAMES = 8          # the drag line is animated: it glitches on some frames
+DROP_FRAMES = 12         # the drag beam is animated: its streaks flow toward the target
+BEAM = 30                # how wide the beam of light streaks is
+ROOM = 16                # space each side of it, for glitches to jump into
+
+
+def _beam(length, frame, glitch):
+    """A strip of red light streaks (the banner's texture), `length` long, as RGBA:
+    rolled along so the streaks flow forward, soft at the edges; when glitching, chunks
+    jump sideways, a pink ghost splits off and blocks scatter. Lies along +x (drop()
+    turns it toward the target)."""
+    import random
+    import numpy as np
+    from . import theme
+    L = max(8, int(length))
+    tex = np.asarray(theme.streaks(L, BEAM, seed=11, density=2.6), dtype=np.float32)
+    tex = np.roll(tex, int(frame * L / DROP_FRAMES / 3) % L, axis=1)     # flowing toward the target
+    across = np.sin(np.linspace(0, np.pi, BEAM)) ** 0.6                     # soft sides
+    along = np.clip(np.minimum(np.arange(L), L - 1 - np.arange(L)) / 18.0, 0.35, 1)  # soft ends
+    alpha = np.clip(tex.max(axis=2) * 2.0, 0, 255) * across[:, None] * along[None, :]
+    H = BEAM + 2 * ROOM
+    rgba = np.zeros((H, L, 4), dtype=np.float32)
+    rgba[ROOM:ROOM + BEAM, :, :3] = np.clip(tex * 1.35, 0, 255)
+    rgba[ROOM:ROOM + BEAM, :, 3] = alpha
+    if glitch:
+        rnd = random.Random(frame * 37)
+        ghost = np.roll(rgba, rnd.choice((-6, -4, 4, 6)), axis=0)           # a pink ghost
+        ghost[..., :3] = [255, 60, 170]
+        ghost[..., 3] *= 0.45
+        for _ in range(rnd.randint(3, 6)):                                 # chunks jump sideways
+            c1 = rnd.randrange(0, L)
+            c2 = min(L, c1 + rnd.randint(10, max(12, L // 6)))
+            rgba[:, c1:c2] = np.roll(rgba[:, c1:c2], rnd.randint(-ROOM + 2, ROOM - 2), axis=0)
+        for _ in range(rnd.randint(1, 3)):                                 # and blink out
+            c1 = rnd.randrange(0, L)
+            rgba[:, c1:c1 + rnd.randint(4, 14), 3] = 0
+        out = ghost.copy()                                                 # beam over its ghost
+        a = rgba[..., 3:] / 255.0
+        out[..., :3] = rgba[..., :3] * a + ghost[..., :3] * (1 - a)
+        out[..., 3] = np.maximum(rgba[..., 3], ghost[..., 3])
+        rgba = out
+        for _ in range(rnd.randint(6, 12)):                                # hot blocks
+            bx, by = rnd.randrange(0, L), rnd.randrange(0, H - 3)
+            rgba[by:by + rnd.randint(2, 4), bx:bx + rnd.randint(5, 26)] = \
+                [255, 40, 60, 235] if rnd.random() < 0.7 else [255, 200, 210, 230]
+    return Image.fromarray(np.clip(rgba, 0, 255).astype(np.uint8), "RGBA")
 
 
 def drop(src, dst, frame=0):
     """A drag: the drop target framed (shape to suit it), a DROP HERE tab beside it, and
-    one long glowing line from what to drag to an arrowhead at the target, with a DRAG
-    tag at the start. Some frames glitch: pieces of the line jump aside or blink out, a
-    ghost copy, tears, data blocks. frame: 0..DROP_FRAMES-1 (cycle them).
-    Returns (image, x, y)."""
-    import random
+    a beam of red light streaks from what to drag to an arrowhead at the target, with a
+    DRAG tag at the start. The streaks flow toward the target; some frames glitch.
+    frame: 0..DROP_FRAMES-1 (cycle them). Returns (image, x, y)."""
     red = _red()
     pad = 44
     label_w = _Canvas(1, 1).text_width("DROP HERE", 12) + 70
@@ -271,50 +313,35 @@ def drop(src, dst, frame=0):
     s = [v - o for v, o in zip(src, (x0, y0, x0, y0))]
     d = [v - o for v, o in zip(dst, (x0, y0, x0, y0))]
     SHAPES[shape_for(d[2] - d[0], d[3] - d[1])](cv, *d, red, 230)
-    glitch = frame in (2, 3, 6) and config.GLITCH
-    rnd = random.Random(frame * 101)
+    glitch = frame in (3, 4, 9) and config.GLITCH
     a = _edge(s, ((d[0] + d[2]) / 2, (d[1] + d[3]) / 2))
     b = _edge(d, ((s[0] + s[2]) / 2, (s[1] + s[3]) / 2))
     length = math.hypot(b[0] - a[0], b[1] - a[1])
+    beam = None
     if length > 30:
         ux, uy = (b[0] - a[0]) / length, (b[1] - a[1]) / length
-        nx, ny = -uy, ux                                               # sideways
-        at = lambda t, side=0.0: (a[0] + ux * t + nx * side, a[1] + uy * t + ny * side)
-        end_t = length - 26
-        piece = 26.0                                                   # the line, in short pieces...
-        n = max(1, int((end_t - 6) / piece) + 1)
-        jumps = {rnd.randrange(0, n) for _ in range(max(2, n // 4))} if glitch else set()
-        gaps = {rnd.randrange(0, n) for _ in range(max(1, n // 8))} if glitch else set()
-        for i in range(n):                                             # ...so a glitch can knock some aside
-            p, q = 6 + i * piece, min(6 + (i + 1) * piece, end_t)
-            if q <= p or i in gaps:
-                continue
-            side = rnd.choice((-16, -11, -7, 7, 11, 16)) if i in jumps else 0
-            cv.line([at(p, side), at(q, side)], red + (255,), 3)
-        if glitch:                                    # ghost copy, tears and data blocks
-            cv.line([at(6, -5), at(end_t, -5)], (255, 60, 170, 190), 2)
-            for _ in range(rnd.randint(2, 4)):
-                tx, ty = at(rnd.uniform(20, end_t))
-                half = rnd.uniform(14, 40)
-                cv.line([(tx - half, ty), (tx + half, ty)], (255, 200, 205, 220), 1.5)
-            for _ in range(rnd.randint(8, 14)):
-                bx, by = at(rnd.uniform(10, end_t), rnd.uniform(-26, 26))
-                bw, bh = rnd.uniform(4, 22), rnd.uniform(2, 4)
-                cv.poly([(bx, by), (bx + bw, by), (bx + bw, by + bh), (bx, by + bh)],
-                        (255, 40, 60, 235) if rnd.random() < 0.75 else (255, 60, 170, 220))
-        cv.poly([(a[0] - 4, a[1] - 4), (a[0] + 4, a[1] - 4), (a[0] + 4, a[1] + 4), (a[0] - 4, a[1] + 4)],
-                red + (255,))                                          # a node where it starts
         end = (b[0] - ux * 8, b[1] - uy * 8)
         base = (end[0] - ux * 18, end[1] - uy * 18)
         notch = (end[0] - ux * 11, end[1] - uy * 11)
         cv.poly([end, (base[0] - uy * 10, base[1] + ux * 10), notch,
                  (base[0] + uy * 10, base[1] - ux * 10)], red + (255,))     # angular arrowhead
+        cv.poly([(a[0] - 4, a[1] - 4), (a[0] + 4, a[1] - 4), (a[0] + 4, a[1] + 4), (a[0] - 4, a[1] + 4)],
+                red + (255,))                                          # a node where it starts
         lx, ly = s[2] + 8, s[1] - 22 if s[1] > 30 else s[3] + 6         # the DRAG tag
         _plate(cv, lx, ly, "DRAG", 10, red)
+        run = length - 20                                              # the beam: start to arrowhead
+        strip = _beam(run, frame, glitch).rotate(-math.degrees(math.atan2(uy, ux)), Image.BICUBIC, expand=True)
+        mx, my = a[0] + ux * run / 2, a[1] + uy * run / 2
+        beam = (strip, int(mx - strip.width / 2), int(my - strip.height / 2))
     tx, ty = d[2] + 10, (d[1] + d[3]) / 2 - 12                          # DROP HERE, beside the target
     cv.line([(d[2] + 2, ty + 12), (tx, ty + 12)], red + (255,), 2)
     _plate(cv, tx, ty, "DROP HERE", 12, red, arrow="left")
-    return cv.finish(), x0, y0
+    img = cv.finish()
+    if beam:
+        layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        layer.paste(*beam[:1], beam[1:])
+        img = Image.alpha_composite(layer, img)                         # under the arrowhead and tags
+    return img, x0, y0
 
 
 def note(text, way=None):

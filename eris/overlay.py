@@ -210,7 +210,8 @@ class Overlay:
             img, x, y = render_drop(src, dst)
             if config.BOX_STYLE == "neon":     # the HUD connector is animated
                 from .hud import DROP_FRAMES
-                self.extra.show_frames(lambda i: img if i == 0 else render_drop(src, dst, i)[0], DROP_FRAMES, x, y)
+                self.extra.show_frames(lambda i: img if i == 0 else render_drop(src, dst, i)[0], DROP_FRAMES, x, y,
+                                       ms=70)
             else:
                 self.extra.show_picture(img, x, y)
             return

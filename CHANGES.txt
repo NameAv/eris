@@ -1,3 +1,4 @@
+v1.24.0: Eris says as little as possible: only the instruction itself is read out. When a new screen comes up she stops talking about the old one straight away and moves on.
 v1.23.5: The box now follows long targets like the address bar when you move or drag the window (it remembers the part with the text, not the empty middle), and searches further for a fast drag. Quicker checks: she looks sooner after a click and once the screen settles.
 v1.23.4: Fix: after you searched, Eris could miss the new page for a long time (the box followed the search box to its new spot and she took it for a scroll). Fix: if she names one thing but picks the number of another, the box goes on the thing she names.
 v1.23.3: Eris reads out the instruction itself ("Click the Wikipedia result"), not the commentary before it; the chat still shows everything.

@@ -154,11 +154,6 @@ class Voice:
         self._drain()
         self.sapi_q.put(("stop", None))
 
-    def skip_queued(self):
-        """Drop what she hasn't started saying yet, but let her finish the sentence she's
-        on: for when she has something newer to say, without cutting herself off."""
-        self._drain()
-
     def _drain(self):
         for q in (self.audio_q, self.sapi_q):
             try:

@@ -23,7 +23,6 @@ WATCH_PROMPT = ("(Automatic look: my screen changed while you were waiting.) Her
                 "with just KEEP (don't repeat the step). If I did something different, briefly "
                 "tell me and guide me back.")
 MAX_LOOKS_PER_TASK = 30
-SECOND_LINE = 90             # a short tip after the action is read out if it's this short (characters)
 ACTIONS = {"click", "double-click", "right-click", "type", "press", "hit", "scroll", "drag", "open",
            "select", "choose", "pick", "tap", "close", "enter", "search", "hold", "move", "put", "use",
            "switch", "go", "find", "check", "tick", "untick", "turn", "hover", "save", "copy", "paste"}
@@ -761,7 +760,6 @@ class Step:
         self.hint = ""             # what she asked you to type (or press), shown with the box
         self.said = ""             # her first line: the instruction (kept for recipes)
         self.instructed = False    # the instruction has been read out
-        self.tipped = False        # ...and a short tip after it
         self.held = None           # her first line, if it was only commentary
         self.what = ""             # what she pointed at
         self.typed = self.key = ""
@@ -793,7 +791,7 @@ class Step:
                 e = self.e
                 e.waiting = None
                 e.auto_looks = 0
-                e.voice.skip_queued()      # finish the sentence she's on, then the new step
+                e.voice.stop()             # the screen moved on: so does she
                 if ev.kind not in ("box", "element"):
                     e._clear()
         handler = getattr(self, "on_" + ev.kind, None)
@@ -892,13 +890,9 @@ class Step:
             self._check_element(words)
         if is_action(words) and not self.instructed:
             self.instructed = True
-            e.voice.say(words)             # the instruction itself
+            e.voice.say(words)             # only the instruction itself is read out
             self.said = words
-        elif self.instructed:
-            if not self.tipped and len(words) <= SECOND_LINE:
-                self.tipped = True
-                e.voice.say(words)         # one short tip after it
-        elif self.held is None:
+        elif not self.instructed and self.held is None:
             self.held = words              # commentary: said only if no instruction comes
         self.said = self.said or words
         if self._my_box():   # no WHAT line: use what she said

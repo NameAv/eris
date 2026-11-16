@@ -201,11 +201,8 @@ def test_voice_makes_sentences_side_by_side():
     queued = speech._Clip(v.gen, "later")
     v.audio_q.put(queued)
     gen = v.gen
-    v.skip_queued()
-    check("something newer to say: the queued line is dropped, the current one isn't cut",
-          queued.skip and v.gen == gen)
     v.stop()
-    check("Stop cuts her off", v.gen == gen + 1)
+    check("Stop cuts her off and drops what she hadn't said yet", v.gen == gen + 1 and queued.skip)
     del _sys.modules["edge_tts"]
 
 
@@ -517,6 +514,23 @@ def test_scroll_or_new_page():
     new_page = rng.integers(0, 255, size=(W.TH, W.TW)).astype(np.int16)
     w._step(new_page, 101.0)
     check("the button moved because a new page loaded: that counts", w.changed_at is not None)
+
+
+def test_new_screen_stops_old_talk():
+    import eris.watcher as W
+    stopped = []
+    voice = types.SimpleNamespace(busy=lambda: True, stop=lambda: stopped.append(1))
+    w = W.Watcher.__new__(W.Watcher)
+    w.eris = types.SimpleNamespace(waiting="click", mon=(0, 0, 1440, 810), voice=voice)
+    w.lock, w.last_fire, w.keep_streak = threading.Lock(), 0.0, 0
+    w.rebase(delay=0)
+    w._step(np.zeros((W.TH, W.TW), np.int16), 100.0)
+    typing = np.zeros((W.TH, W.TW), np.int16)
+    typing[50:52, 40:60] = 200                           # a few letters appear
+    w._step(typing, 100.5)
+    check("a small change (typing) doesn't cut her off", not stopped)
+    w._step(np.full((W.TH, W.TW), 120, np.int16), 101.0)  # a new page
+    check("a new screen: she stops talking about the old one", stopped == [1])
 
 
 def test_hearing():

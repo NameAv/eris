@@ -63,9 +63,6 @@ class FakeVoice:
     def say(self, text, force=False, voice=None):
         self.said.append(text)
 
-    def skip_queued(self):
-        pass
-
     def stop(self):
         pass
 

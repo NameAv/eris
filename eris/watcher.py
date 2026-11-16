@@ -28,6 +28,7 @@ FAST = 0.15                # seconds between looks at the box's own spot
 REACH_X, REACH_Y = 500, 450   # how far the quick look searches for a button that moved
 MIN_GAP = 4.0              # never ask the AI more often than this
 MAX_LOOKS_PER_STEP = 6     # then go quiet until you click the box / press F9
+NEW_SCREEN = 0.02          # this much of the screen changed: what she's saying is out of date
 SCROLL_LIKE = 0.03         # after the box's button moved: the rest of the screen moved with it
                            # (a scroll) if, shifted back, no more than this share differs
 
@@ -223,7 +224,11 @@ class Watcher:
                     self.shift, self.changed_at, self.still_since = [0, 0], None, None
                     return False
                 self.shift = [0, 0]           # the page itself changed: that counts
-            different = gone or changed(frame, self.base) > CHANGED
+            part = changed(frame, self.base)
+            voice = getattr(self.eris, "voice", None)
+            if part > NEW_SCREEN and self.changed_at is None and voice and voice.busy():
+                voice.stop()                  # a new screen: stop talking about the old one
+            different = gone or part > CHANGED
             still = changed(frame, self.prev) <= STILL
             self.prev = frame
             if different and self.changed_at is None:

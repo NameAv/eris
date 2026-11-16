@@ -41,6 +41,41 @@ def test_protocol():
     check("every reply line kind", ok)
 
 
+def test_new_lines():
+    from eris.protocol import parse_line
+    check("KEY: shortcuts written nicely", parse_line("KEY ctrl+shift+s").value == "Ctrl + Shift + S")
+    check("SCROLL: the way to go", parse_line("SCROLL up").value == "up" and parse_line("SCROLL").value == "down"
+          and parse_line("SCROLL sideways").value == "down")
+    check("TO: drop on an element or a box", parse_line("TO ELEMENT 7").value == 7
+          and parse_line("TO 30 40 10 20").value == (10, 20, 30, 40))
+    check("TO with nothing usable is skipped", parse_line("TO the player") is None)
+    from eris import glowbox
+    img, x, y = glowbox.render_drop((100, 100, 200, 140), (600, 400, 700, 440))
+    check("a drag draws one picture covering both boxes",
+          x < 100 and y < 100 and x + img.width > 700 and y + img.height > 440)
+    check("scroll / key notes draw", glowbox.render_note("scroll down", "down").width
+          > glowbox.render_note("scroll down").width - 1)
+
+
+def test_looks():
+    from eris import glowbox, theme
+    theme.apply("neon")
+    check("Neon look: black, neon red, sharp corners",
+          theme.NAME == "neon" and theme.BG == "#040102" and theme.r(26) == 3 and theme.STATES["guiding"][1] == "#ff2236")
+    theme.apply("crimson")
+    check("...and back to Crimson exactly", theme.BG == "#0d0809" and theme.r(26) == 26)
+    theme.apply("something else")
+    check("an unknown look falls back to Crimson", theme.NAME == "crimson")
+    banner = theme.streaks(480, 28)
+    px = np.asarray(banner)
+    check("light-streak banner: mostly dark, with red streaks",
+          px.mean() < 60 and (px[..., 0] > 150).mean() > 0.02 and px[..., 0].mean() > px[..., 2].mean() * 2)
+    hud = glowbox.render(200, 40, style="neon")
+    round_ = glowbox.render(200, 40, style="glow")
+    check("Neon HUD box: cut corners and tabs (not the rounded box)",
+          np.asarray(hud).shape == np.asarray(round_).shape and not np.array_equal(np.asarray(hud), np.asarray(round_)))
+
+
 def test_elements_list():
     from eris import elements
     els = [{"type": 50005, "name": "Wikipedia", "rect": (200, 600, 380, 630)},

@@ -673,6 +673,36 @@ class Step:
         self.e.ui.cmd("type_hint", text)
         self.e.ui.log("hint", f"Type:  {text}")
 
+    def on_key(self, keys):
+        e = self.e
+        e.ui.log("hint", f"Press:  {keys}")
+        if self._my_box():
+            self.hint = keys
+            e.ui.cmd("type_hint", keys, "press:  ")
+        else:
+            e.ui.cmd("badge", f"press  {keys}", *self._area())
+
+    def on_scroll(self, way):
+        self.e.ui.log("hint", f"Scroll {way}")
+        self.e.ui.cmd("scroll_hint", way, *self._area())
+
+    def on_to(self, where):
+        """A drag: the box is what to drag, this is where to drop it."""
+        if not self._my_box():
+            return
+        shot = self.shot
+        if isinstance(where, int):
+            drop, _ = snap.element(shot, where)
+        else:
+            rough = shot.to_screen(where)
+            drop = snap.snap(shot, rough) or rough
+        if drop:
+            self.e.ui.cmd("drop", *drop)
+
+    def _area(self):
+        """Where the screenshot was taken: the app's window, or the whole monitor."""
+        return self.shot.left, self.shot.top, self.shot.width, self.shot.height
+
     def on_say(self, words):
         e = self.e
         e.ui.cmd("status", "")

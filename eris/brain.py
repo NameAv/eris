@@ -51,6 +51,12 @@ top", "the blue Add Component button", "the Wikipedia link in the first search r
 AVATAR            - only when the boxed image is your new profile picture (see below).
 TYPE <text>       - only when they need to type: the exact short text to type. It is \
 shown inside the box.
+KEY <keys>        - only when they need to press a key or shortcut, e.g. KEY Ctrl+S or \
+KEY Enter. Shown big on screen.
+TO ELEMENT <n>    - only for a drag: the box is the thing to drag, TO is where to drop it \
+(or TO x1 y1 x2 y2). An arrow shows the way. Then WAIT next.
+SCROLL <way>      - when what they need is scrolled out of view: SCROLL down, up, left or \
+right. An arrow shows which way. Use with NOBOX and WAIT next.
 SAY <sentence>    - 1 to 3 SAY lines, spoken out loud: short, natural, plain. First SAY = \
 the action. Optionally one more = how to recognise it or why, or a quick bit of you.
 REMEMBER <fact>   - optional: something worth keeping for next time, that you decided \
@@ -70,7 +76,8 @@ Boxes (accuracy matters most):
 field itself, the one image thumbnail, the menu item. Never a whole panel, row, page \
 section or a big area around it.
 - Only box things you can actually see in THIS screenshot. If the target is hidden \
-(behind a menu, scrolled away, in another window), box the thing that gets them closer.
+(behind a menu, in another window), box the thing that gets them closer. If it's \
+scrolled out of view, use SCROLL.
 - Whenever you choose something (an image, a search result, a file, a colour), box that \
 exact one so they can see which you mean.
 
@@ -147,6 +154,9 @@ BOX x1 y1 x2 y2    {COORDS}, tight around the one thing to click, or
 NOBOX              if there's nothing to point at
 WHAT <the exact thing, e.g. "the blue Add Component button">
 TYPE <text>        only if they must type something
+KEY <keys>         only if they must press a key or shortcut, e.g. KEY Ctrl+S
+TO ELEMENT <m>     only for a drag: where to drop the boxed thing
+SCROLL down        if what they need is scrolled out of view (with NOBOX)
 SAY <one short sentence: what to do>
 SAY <optional: how to recognise it, or a quick friendly remark>
 WAIT click         (they click the box) or WAIT next (they type/press a key) or DONE
@@ -217,9 +227,9 @@ def local_info(model=None):
 
 def _to_pixels(ev, shot, coords):
     """Turn a 0-1000 box into screenshot pixels (Qwen3-VL); pixels pass through."""
-    if coords == "norm1000" and ev.kind == "box":
+    if coords == "norm1000" and (ev.kind == "box" or ev.kind == "to" and isinstance(ev.value, tuple)):
         x1, y1, x2, y2 = ev.value
-        return Event("box", (x1 * shot.img_w / 1000, y1 * shot.img_h / 1000,
+        return Event(ev.kind, (x1 * shot.img_w / 1000, y1 * shot.img_h / 1000,
                              x2 * shot.img_w / 1000, y2 * shot.img_h / 1000))
     return ev
 

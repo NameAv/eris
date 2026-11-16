@@ -1,7 +1,13 @@
-"""Eris's look: deep near-black with crimson accents."""
+"""Eris's look. Two themes (Settings, then Eris, then Look):
+- crimson: deep near-black with crimson accents, soft rounded shapes;
+- neon: a neon-red HUD: black, glowing red lines, sharp corners, a condensed font.
+apply() runs once at start-up, before any window is built."""
+import random
 import sys
 
+NAME = "crimson"
 FONT = "Segoe UI" if sys.platform == "win32" else "DejaVu Sans"
+RADIUS = None           # None: shapes as designed; a number: no corner rounder than that
 
 BG = "#0d0809"          # window background
 CARD = "#170f11"        # cards / chat area
@@ -17,14 +23,65 @@ GOLD = "#e6b85c"
 ERROR = "#ff8a8a"
 CAPTION_BG = "#1a0a0e"
 
-STATES = {  # state -> (label, dot colour)
-    "loading": ("Waking up", MUTED),
-    "ready": ("Ready", "#4fd18b"),
-    "listening": ("Listening", GLOW),
-    "thinking": ("Thinking", GOLD),
-    "guiding": ("Guiding", ACCENT),
-    "off": ("Paused", MUTED),
+NEON = {
+    "FONT": "Bahnschrift" if sys.platform == "win32" else "DejaVu Sans Condensed",
+    "RADIUS": 3,
+    "BG": "#040102", "CARD": "#0a0304", "CARD_2": "#120507", "BORDER": "#6b1019",
+    "ACCENT": "#ff2236", "ACCENT_HOVER": "#c9182a", "ACCENT_DIM": "#3d0910", "GLOW": "#ff5b68",
+    "TEXT": "#ffe4e1", "MUTED": "#b8706c", "GOLD": "#ffb04a", "ERROR": "#ff8a8a", "CAPTION_BG": "#130306",
 }
+CRIMSON = {k: globals()[k] for k in NEON}
+THEMES = ("crimson", "neon")
+
+
+def _states():
+    return {  # state -> (label, dot colour)
+        "loading": ("Waking up", MUTED),
+        "ready": ("Ready", "#4fd18b"),
+        "listening": ("Listening", GLOW),
+        "thinking": ("Thinking", GOLD),
+        "guiding": ("Guiding", ACCENT),
+        "off": ("Paused", MUTED),
+    }
+
+
+STATES = _states()
+
+
+def apply(name):
+    """Switch to a theme (before any window or font is made)."""
+    global NAME, STATES
+    NAME = name if name in THEMES else "crimson"
+    globals().update(NEON if NAME == "neon" else CRIMSON)
+    STATES = _states()
+
+
+def r(n):
+    """A corner radius in this theme: the neon HUD keeps corners sharp."""
+    return n if RADIUS is None else min(n, RADIUS)
+
+
+def streaks(w, h, seed=7):
+    """Sparse streaks of red light on black (the neon theme's banner)."""
+    from PIL import Image, ImageChops, ImageDraw, ImageFilter
+    rnd = random.Random(seed)
+    glow = Image.new("RGB", (w, h), (0, 0, 0))
+    lines = Image.new("RGB", (w, h), (0, 0, 0))
+    gd, d = ImageDraw.Draw(glow), ImageDraw.Draw(lines)
+    for _ in range(max(8, int(w * h / 650))):
+        y = rnd.uniform(0, h)
+        x = rnd.uniform(-w * 0.2, w)
+        length = rnd.uniform(15, w * 0.45)
+        heat = rnd.random() ** 1.6                      # most streaks are dim
+        col = (int(60 + 170 * heat), int(4 + 30 * heat ** 3), int(8 + 26 * heat ** 3))
+        gd.line((x, y, x + length, y), fill=col, width=rnd.choice((2, 3, 4)))
+        d.line((x + length * 0.1, y, x + length * 0.9, y), fill=col, width=1)
+        if heat > 0.8:                                   # a hot white-pink core
+            d.line((x + length * 0.4, y, x + length * 0.7, y), fill=(255, 190, 180), width=1)
+    for _ in range(int(w * h / 1500)):                   # a few sparks
+        x, y = rnd.uniform(0, w), rnd.uniform(0, h)
+        d.point((x, y), fill=(255, 80, 70))
+    return ImageChops.add(glow.filter(ImageFilter.GaussianBlur(3)), lines)
 
 
 _fonts = {}

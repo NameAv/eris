@@ -24,7 +24,8 @@ from .theme import font, tint_titlebar
 from .core import Eris
 from .overlay import Overlay
 
-OVERLAY_CMDS = {"box", "move_box", "type_hint", "clear_box", "status", "monitor"}
+OVERLAY_CMDS = {"box", "move_box", "type_hint", "clear_box", "status", "monitor", "drop",
+                "scroll_hint", "badge"}
 SUGGESTIONS = ["How do I add a Rigidbody in Unity?", "Take me to Wikipedia",
                "Pick yourself a profile picture"]
 
@@ -85,6 +86,7 @@ class Avatar(tk.Canvas):
 class App(ctk.CTk):
     def __init__(self):
         settings.load()
+        T.apply(config.THEME)
         ctk.set_appearance_mode("dark")
         super().__init__(fg_color=T.BG)
         self.title("Eris")
@@ -199,6 +201,9 @@ class App(ctk.CTk):
     # ---------- layout ----------
     def _build(self):
         # header: avatar, name, status chip
+        if T.NAME == "neon":    # streaks of red light across the top
+            self.banner = ctk.CTkImage(T.streaks(1040, 56), size=(520, 28))
+            ctk.CTkLabel(self, text="", image=self.banner, height=28).pack(fill="x")
         top = ctk.CTkFrame(self, fg_color="transparent")
         top.pack(fill="x", padx=18, pady=(16, 8))
         self.avatar = Avatar(top)
@@ -209,23 +214,23 @@ class App(ctk.CTk):
                      height=26).pack(anchor="w")
         self.subtitle = ctk.CTkLabel(names, text="", font=font(12), text_color=T.MUTED, height=16)
         self.subtitle.pack(anchor="w")
-        ctk.CTkButton(top, text="Settings", width=78, height=32, corner_radius=12, font=font(12),
+        ctk.CTkButton(top, text="Settings", width=78, height=32, corner_radius=T.r(12), font=font(12),
                       fg_color=T.CARD_2, hover_color=T.BORDER, text_color=T.TEXT,
                       command=self.open_settings).pack(side="right")
-        self.chip = ctk.CTkFrame(top, fg_color=T.CARD_2, corner_radius=14, height=28)
+        self.chip = ctk.CTkFrame(top, fg_color=T.CARD_2, corner_radius=T.r(14), height=28)
         self.chip.pack(side="right", padx=8)
-        self.chip_dot = ctk.CTkFrame(self.chip, width=9, height=9, corner_radius=4,
+        self.chip_dot = ctk.CTkFrame(self.chip, width=9, height=9, corner_radius=T.r(4),
                                      fg_color=T.MUTED)
         self.chip_dot.pack(side="left", padx=(11, 6))
         self.chip_text = ctk.CTkLabel(self.chip, text="", font=font(12, "bold"),
                                       text_color=T.TEXT)
         self.chip_text.pack(side="left", padx=(0, 12))
-        self.update_btn = ctk.CTkButton(top, text="Update", width=110, height=30, corner_radius=15,
+        self.update_btn = ctk.CTkButton(top, text="Update", width=110, height=30, corner_radius=T.r(15),
                                         fg_color="#1f6b45", hover_color="#185437",
                                         font=font(12, "bold"), command=self.do_update)
 
         # thin crimson line
-        ctk.CTkFrame(self, fg_color=T.ACCENT, height=2, corner_radius=1).pack(fill="x", padx=18)
+        ctk.CTkFrame(self, fg_color=T.ACCENT, height=2, corner_radius=T.r(1)).pack(fill="x", padx=18)
 
         row = ctk.CTkFrame(self, fg_color="transparent")
         row.pack(fill="x", padx=18, pady=(10, 0))
@@ -240,7 +245,7 @@ class App(ctk.CTk):
         self._update_hint()
 
         # chat
-        self.chat = ctk.CTkScrollableFrame(self, fg_color=T.CARD, corner_radius=18,
+        self.chat = ctk.CTkScrollableFrame(self, fg_color=T.CARD, corner_radius=T.r(18),
                                            scrollbar_button_color=T.BORDER,
                                            scrollbar_button_hover_color=T.ACCENT_DIM)
         self.chat.pack(fill="both", expand=True, padx=18, pady=12)
@@ -249,7 +254,7 @@ class App(ctk.CTk):
 
         # status line (filled by _note)
         self.note_row = ctk.CTkFrame(self, fg_color="transparent")
-        self.note_dot = ctk.CTkFrame(self.note_row, width=7, height=7, corner_radius=3,
+        self.note_dot = ctk.CTkFrame(self.note_row, width=7, height=7, corner_radius=T.r(3),
                                      fg_color=T.MUTED)
         self.note_dot.pack(side="left", padx=(2, 8))
         self.note_label = ctk.CTkLabel(self.note_row, text="", font=font(12), text_color=T.MUTED,
@@ -263,7 +268,7 @@ class App(ctk.CTk):
                          ("Wrong box", lambda: self.eris.wrong_box()),
                          ("Stop", lambda: self.eris.cancel()),
                          ("New task", lambda: self.eris.new_task())):
-            b = ctk.CTkButton(ctl, text=text, height=34, corner_radius=17, font=font(13),
+            b = ctk.CTkButton(ctl, text=text, width=40, height=34, corner_radius=T.r(17), font=font(13),
                               fg_color="transparent", border_width=1, border_color=T.BORDER,
                               hover_color=T.CARD_2, text_color=T.TEXT, text_color_disabled=T.MUTED,
                               command=fn)
@@ -273,21 +278,21 @@ class App(ctk.CTk):
                 b.configure(state="disabled")   # only while a box is showing
 
         # type box
-        typ = ctk.CTkFrame(self, fg_color=T.CARD_2, corner_radius=22)
+        typ = ctk.CTkFrame(self, fg_color=T.CARD_2, corner_radius=T.r(22))
         typ.pack(fill="x", padx=18, pady=(12, 8))
         self.entry = ctk.CTkEntry(typ, height=40, placeholder_text="Type a question...",
                                   fg_color=T.CARD_2, border_width=0, font=font(14),
                                   text_color=T.TEXT, placeholder_text_color=T.MUTED)
         self.entry.pack(side="left", fill="x", expand=True, padx=(14, 4), pady=2)
         self.entry.bind("<Return>", lambda e: self._send())
-        ctk.CTkButton(typ, text="Ask", width=56, height=36, corner_radius=14, font=font(13, "bold"),
+        ctk.CTkButton(typ, text="Ask", width=56, height=36, corner_radius=T.r(14), font=font(13, "bold"),
                       fg_color=T.ACCENT, hover_color=T.ACCENT_HOVER,
                       command=self._send).pack(side="right", padx=4, pady=3)
 
         # big talk button
         # Start with real text: CustomTkinter only creates the text label once there's text,
         # and clicks on the words land on that label, so it must exist before we bind.
-        self.mic = ctk.CTkButton(self, text="Click to call", height=52, corner_radius=26,
+        self.mic = ctk.CTkButton(self, text="Click to call", height=52, corner_radius=T.r(26),
                                  fg_color=T.ACCENT, hover_color=T.ACCENT_HOVER,
                                  font=font(15, "bold"), text_color="#ffffff")
         self.mic.pack(fill="x", padx=18, pady=(0, 18))
@@ -323,7 +328,7 @@ class App(ctk.CTk):
             self._suggestion(box, text)
 
     def _suggestion(self, parent, text):
-        row = ctk.CTkFrame(parent, fg_color=T.CARD_2, corner_radius=12, height=38)
+        row = ctk.CTkFrame(parent, fg_color=T.CARD_2, corner_radius=T.r(12), height=38)
         row.pack(fill="x", pady=3)
         lbl = ctk.CTkLabel(row, text=text, font=font(13), text_color=T.TEXT, anchor="w")
         lbl.pack(side="left", padx=14, pady=8, fill="x", expand=True)
@@ -391,7 +396,7 @@ class App(ctk.CTk):
         self.after(150, go)   # again once the new bubble has its final size
 
     def _bubble(self, row, text, bg):
-        return ctk.CTkLabel(row, text=text, fg_color=bg, corner_radius=16, text_color=T.TEXT,
+        return ctk.CTkLabel(row, text=text, fg_color=bg, corner_radius=T.r(16), text_color=T.TEXT,
                             font=font(14), wraplength=self._wrap(), justify="left",
                             padx=14, pady=9)
 

@@ -52,6 +52,24 @@ def test_box_follows_its_button():
     config.TRACK, config.REFINE = True, True
 
 
+def test_drag_scroll_and_keys():
+    e, ui, shot = make_eris()
+    e.brain.script = ["BOX 100 100 200 130\nTO 600 400 700 440\nSAY Drag it onto the Player.\nWAIT next",
+                      "NOBOX\nSCROLL down\nSAY It's further down.\nWAIT next",
+                      "NOBOX\nKEY ctrl+s\nSAY Press Ctrl and S.\nDONE",
+                      "BOX 100 100 200 130\nKEY enter\nSAY Then press Enter.\nWAIT next"]
+    e.ask("put my script on the player")
+    check("a drag shows where to drop it", wait_for(lambda: ("drop", 1200, 800, 1400, 880) in ui.cmds), ui.cmds[-4:])
+    e.ask("where do foxes live")
+    check("scroll arrow at the edge of what she saw",
+          wait_for(lambda: ("scroll_hint", "down", 0, 0, shot.width, shot.height) in ui.cmds))
+    e.ask("how do i save")
+    check("a shortcut with no box: a big badge", wait_for(lambda: ("badge", "press  Ctrl + S", 0, 0,
+                                                                     shot.width, shot.height) in ui.cmds))
+    e.ask("search")
+    check("a key with a box: shown inside it", wait_for(lambda: ("type_hint", "Enter", "press:  ") in ui.cmds))
+
+
 def test_wrong_box():
     from PIL import Image
     from eris import settings

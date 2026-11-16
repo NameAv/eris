@@ -60,7 +60,7 @@ class SettingsWindow(ctk.CTkToplevel):
         self._reset_armed = False
 
         # sidebar
-        side = ctk.CTkFrame(self, fg_color=T.CARD, corner_radius=0, width=180)
+        side = ctk.CTkFrame(self, fg_color=T.CARD, corner_radius=T.r(0), width=180)
         side.pack(side="left", fill="y")
         side.pack_propagate(False)
         ctk.CTkLabel(side, text="Settings", font=font(20, "bold"), text_color=T.TEXT
@@ -69,9 +69,9 @@ class SettingsWindow(ctk.CTkToplevel):
         for key, label in PAGES:
             item = ctk.CTkFrame(side, fg_color="transparent", height=38)
             item.pack(fill="x", padx=8, pady=1)
-            bar = ctk.CTkFrame(item, width=3, height=22, corner_radius=2, fg_color="transparent")
+            bar = ctk.CTkFrame(item, width=3, height=22, corner_radius=T.r(2), fg_color="transparent")
             bar.pack(side="left", padx=(2, 6))
-            btn = ctk.CTkButton(item, text=label, anchor="w", height=36, corner_radius=10,
+            btn = ctk.CTkButton(item, text=label, anchor="w", height=36, corner_radius=T.r(10),
                                 font=font(14), fg_color="transparent", hover_color=T.CARD_2,
                                 text_color=T.MUTED, command=lambda k=key: self.show(k))
             btn.pack(side="left", fill="x", expand=True)
@@ -149,7 +149,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
     # ================= building blocks =================
     def card(self, title=None, sub=None):
-        c = ctk.CTkFrame(self.body, fg_color=T.CARD, corner_radius=16)
+        c = ctk.CTkFrame(self.body, fg_color=T.CARD, corner_radius=T.r(16))
         c.pack(fill="x", padx=10, pady=7)
         inner = ctk.CTkFrame(c, fg_color="transparent")
         inner.pack(fill="x", padx=16, pady=14)
@@ -201,7 +201,7 @@ class SettingsWindow(ctk.CTkToplevel):
         return s
 
     def button(self, parent, text, command, primary=False, width=None):
-        b = ctk.CTkButton(parent, text=text, command=command, height=34, corner_radius=12,
+        b = ctk.CTkButton(parent, text=text, command=command, height=34, corner_radius=T.r(12),
                           font=font(13, "bold" if primary else "normal"),
                           fg_color=T.ACCENT if primary else T.CARD_2,
                           hover_color=T.ACCENT_HOVER if primary else T.BORDER,
@@ -229,7 +229,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def select_card(self, parent, selected, title, tag, text, command, image=None):
         """A big clickable option card (crimson border when chosen)."""
-        c = ctk.CTkFrame(parent, fg_color=T.CARD_2 if selected else T.CARD, corner_radius=14,
+        c = ctk.CTkFrame(parent, fg_color=T.CARD_2 if selected else T.CARD, corner_radius=T.r(14),
                          border_width=2, border_color=T.ACCENT if selected else T.BORDER)
         inner = ctk.CTkFrame(c, fg_color="transparent")
         inner.pack(fill="both", expand=True, padx=12, pady=10)
@@ -237,7 +237,7 @@ class SettingsWindow(ctk.CTkToplevel):
         top.pack(fill="x")
         ctk.CTkLabel(top, text=title, font=font(15, "bold"), text_color=T.TEXT).pack(side="left")
         if tag:   # price/info tag on its own line so it never collides with the title
-            ctk.CTkLabel(inner, text=f"  {tag}  ", font=font(11, "bold"), corner_radius=8,
+            ctk.CTkLabel(inner, text=f"  {tag}  ", font=font(11, "bold"), corner_radius=T.r(8),
                          fg_color=T.ACCENT_DIM if selected else T.BORDER, text_color=T.TEXT
                          ).pack(anchor="w", pady=(4, 0))
         if image is not None:
@@ -283,7 +283,7 @@ class SettingsWindow(ctk.CTkToplevel):
                                    "(only needed once per model).")
             for name, size, about in config.LOCAL_MODELS:
                 chosen = config.LOCAL_MODEL == name
-                r = ctk.CTkFrame(c, fg_color=T.CARD_2 if chosen else T.CARD, corner_radius=12,
+                r = ctk.CTkFrame(c, fg_color=T.CARD_2 if chosen else T.CARD, corner_radius=T.r(12),
                                  border_width=2, border_color=T.ACCENT if chosen else T.BORDER)
                 r.pack(fill="x", pady=3)
                 txt = ctk.CTkFrame(r, fg_color="transparent")
@@ -436,7 +436,7 @@ class SettingsWindow(ctk.CTkToplevel):
             for i, (label, name) in enumerate(VOICES.items()):
                 who, feel = VOICE_INFO[label]
                 chosen = config.VOICE_NAME == name
-                cell = ctk.CTkFrame(grid, fg_color=T.CARD_2 if chosen else T.CARD, corner_radius=12,
+                cell = ctk.CTkFrame(grid, fg_color=T.CARD_2 if chosen else T.CARD, corner_radius=T.r(12),
                                     border_width=2, border_color=T.ACCENT if chosen else T.BORDER)
                 cell.grid(row=i // 2, column=i % 2, sticky="ew", padx=4, pady=4)
                 grid.columnconfigure(i % 2, weight=1, uniform="v")
@@ -444,7 +444,7 @@ class SettingsWindow(ctk.CTkToplevel):
                 txt.pack(side="left", padx=12, pady=8, fill="x", expand=True)
                 ctk.CTkLabel(txt, text=who, font=font(14, "bold"), text_color=T.TEXT, anchor="w").pack(fill="x")
                 ctk.CTkLabel(txt, text=feel, font=font(12), text_color=T.MUTED, anchor="w").pack(fill="x")
-                ctk.CTkButton(cell, text="Play", width=58, height=30, corner_radius=10, font=font(12, "bold"),
+                ctk.CTkButton(cell, text="Play", width=58, height=30, corner_radius=T.r(10), font=font(12, "bold"),
                               fg_color=T.ACCENT if chosen else T.BORDER, hover_color=T.ACCENT_HOVER,
                               command=lambda n=name: self._preview(n)).pack(side="right", padx=10)
                 pick = lambda _e, n=name: (self.set(VOICE_NAME=n), self.show("voice"))
@@ -481,10 +481,11 @@ class SettingsWindow(ctk.CTkToplevel):
         grid.pack(fill="x", pady=(6, 0))
         for i, (value, title, text) in enumerate([
                 ("glow", "Glow", "Rounded, glowing, with a gentle pulse."),
-                ("bars", "Simple", "Plain sharp box. Use it if Glow misbehaves.")]):
+                ("neon", "Neon HUD", "Angular, glowing, with HUD tabs. Goes with the Neon look."),
+                ("bars", "Simple", "Plain sharp box. Use it if the others misbehave.")]):
             grid.columnconfigure(i, weight=1, uniform="s")
             img = ctk.CTkImage(light_image=_style_preview(value), dark_image=_style_preview(value),
-                               size=(220, 74))
+                               size=(160, 54))
             self.select_card(grid, config.BOX_STYLE == value, title, None, text,
                              lambda v=value: (self.set(BOX_STYLE=v), self.toast("✓ Saved: takes effect next time Eris opens"),
                                               self.show("guiding")), image=img
@@ -566,10 +567,10 @@ class SettingsWindow(ctk.CTkToplevel):
         if not config.PRIVATE_APPS:
             self.muted(self.apps_list, "No apps yet.")
         for name in config.PRIVATE_APPS:
-            r = ctk.CTkFrame(self.apps_list, fg_color=T.CARD_2, corner_radius=10)
+            r = ctk.CTkFrame(self.apps_list, fg_color=T.CARD_2, corner_radius=T.r(10))
             r.pack(fill="x", pady=2)
             ctk.CTkLabel(r, text=name, font=font(13), text_color=T.TEXT).pack(side="left", padx=12, pady=5)
-            ctk.CTkButton(r, text="Remove", width=70, height=26, corner_radius=10, font=font(12),
+            ctk.CTkButton(r, text="Remove", width=70, height=26, corner_radius=T.r(10), font=font(12),
                           fg_color="transparent", hover_color=T.ACCENT_DIM, text_color=T.MUTED,
                           command=lambda n=name: (self.set(PRIVATE_APPS=[a for a in config.PRIVATE_APPS if a != n]),
                                                   self._fill_apps())).pack(side="right", padx=6)
@@ -595,6 +596,21 @@ class SettingsWindow(ctk.CTkToplevel):
         tick(3)
 
     def _page_eris(self):
+        c = self.card("Look")
+        grid = ctk.CTkFrame(c, fg_color="transparent")
+        grid.pack(fill="x", pady=(6, 0))
+        for i, (value, title, text) in enumerate([
+                ("crimson", "Crimson", "Soft and rounded, deep crimson."),
+                ("neon", "Neon HUD", "Black and neon red, sharp lines, light streaks.")]):
+            grid.columnconfigure(i, weight=1, uniform="t")
+            img = ctk.CTkImage(light_image=_theme_preview(value), dark_image=_theme_preview(value), size=(220, 74))
+            self.select_card(grid, config.THEME == value, title, None, text,
+                             lambda v=value: (self.set(THEME=v), self.show("eris"),
+                                              self.toast("✓ Saved: restart Eris to see it")), image=img
+                             ).grid(row=0, column=i, sticky="nsew", padx=4)
+        if config.THEME != T.NAME:
+            self.button(c, "Restart Eris now", lambda: self.app.cmd("restart"), primary=True
+                        ).pack(anchor="w", pady=(12, 0))
         c = self.card()
         top = ctk.CTkFrame(c, fg_color="transparent")
         top.pack(fill="x")
@@ -623,11 +639,11 @@ class SettingsWindow(ctk.CTkToplevel):
         if not mems:
             self.muted(c, "Nothing yet.")
         for m in mems:
-            r = ctk.CTkFrame(c, fg_color=T.CARD_2, corner_radius=10)
+            r = ctk.CTkFrame(c, fg_color=T.CARD_2, corner_radius=T.r(10))
             r.pack(fill="x", pady=2)
             ctk.CTkLabel(r, text=m, font=font(13), text_color=T.TEXT, anchor="w", justify="left",
                          wraplength=400).pack(side="left", padx=12, pady=6, fill="x", expand=True)
-            ctk.CTkButton(r, text="Remove", width=70, height=26, corner_radius=10, font=font(12),
+            ctk.CTkButton(r, text="Remove", width=70, height=26, corner_radius=T.r(10), font=font(12),
                           fg_color="transparent", hover_color=T.ACCENT_DIM, text_color=T.MUTED,
                           command=lambda f=m: (settings.forget(f), self.toast("✓ Forgotten"),
                                                self.show("eris"))).pack(side="right", padx=6)
@@ -658,7 +674,7 @@ class SettingsWindow(ctk.CTkToplevel):
                                  ("CANCEL_KEY", "Stop", "Clears the box and stops her talking.")):
             right = self.row(c, title, help)
             b = ctk.CTkButton(right, text=key_label(getattr(config, key)), width=150, height=38,
-                              corner_radius=12, font=font(15, "bold"), fg_color=T.CARD_2,
+                              corner_radius=T.r(12), font=font(15, "bold"), fg_color=T.CARD_2,
                               hover_color=T.BORDER, border_width=2, border_color=T.BORDER,
                               command=lambda k=key: self._start_capture(k))
             b.pack()
@@ -838,6 +854,35 @@ def _avatar_image(size):
     return img.resize((size, size), Image.LANCZOS)
 
 
+def _theme_preview(name):
+    """A little picture of each look: the talk button on its background."""
+    from PIL import ImageFont
+    W, H = 440, 148
+    neon = name == "neon"
+    img = T.streaks(W, H) if neon else Image.new("RGB", (W, H), "#0d0809")
+    d = ImageDraw.Draw(img)
+    try:
+        f = ImageFont.truetype("bahnschrift.ttf" if neon else "segoeui.ttf", 28)
+    except OSError:
+        try:
+            f = ImageFont.truetype("DejaVuSans.ttf", 26)
+        except OSError:
+            f = ImageFont.load_default()
+    x1, y1, x2, y2 = 70, 46, 370, 104
+    if neon:
+        c = 12
+        pts = [(x1 + c, y1), (x2, y1), (x2, y2 - c), (x2 - c, y2), (x1, y2), (x1, y1 + c)]
+        d.polygon(pts, fill="#0a0304")
+        d.line(pts + [pts[0]], fill="#ff2236", width=3)
+        d.line((x2 - 60, y1 - 7, x2, y1 - 7), fill="#ff2236", width=3)       # HUD tabs
+        d.line((x1, y2 + 7, x1 + 60, y2 + 7), fill="#ff2236", width=3)
+        d.text(((x1 + x2) / 2, (y1 + y2) / 2), "CLICK TO CALL", fill="#ff5b68", font=f, anchor="mm")
+    else:
+        d.rounded_rectangle((x1, y1, x2, y2), 29, fill="#e3263f")
+        d.text(((x1 + x2) / 2, (y1 + y2) / 2), "Click to call", fill="white", font=f, anchor="mm")
+    return img
+
+
 def _style_preview(style):
     """Little picture of each box style around a fake button."""
     from PIL import ImageFont
@@ -854,9 +899,9 @@ def _style_preview(style):
     bx1, by1, bx2, by2 = 110, 46, 330, 102
     d.rounded_rectangle((bx1, by1, bx2, by2), 8, fill="#3a3a3a")
     d.text(((bx1 + bx2) / 2, (by1 + by2) / 2), "Add Component", fill="#e0e0e0", font=f, anchor="mm")
-    if style == "glow":
+    if style in ("glow", "neon"):
         from .glowbox import render, GLOW
-        g = render(bx2 - bx1 + 16, by2 - by1 + 16, "")
+        g = render(bx2 - bx1 + 16, by2 - by1 + 16, "", style=style)
         img.paste(g, (bx1 - 8 - GLOW, by1 - 8 - GLOW), g)
     else:
         red = config.BOX_COLOR

@@ -32,12 +32,19 @@ After that, just open **Eris** from the Desktop. No command window.
   the thing she pointed at, in a split second and without asking the AI again. If the button
   disappears, she takes a fresh look. (Settings, then Guiding, then *Box follows what it points at*.)
 - **Wrong box?** Click *Wrong box* and she looks again, knowing the last one was wrong.
+- **Drags, shortcuts and scrolling.** To drag something (a script onto an object in Unity), she
+  boxes it and draws a glowing arrow to a dashed *drop here* box. Shortcuts show as a big badge
+  (*press Ctrl + S*). When what you need is further down, an arrow at the edge of the window shows
+  which way to scroll.
 - She looks at the screen your app is on, even when your mouse is over Eris on another screen.
 - When you need to type something, she shows exactly what to type inside the box.
 - **Next step / F9** is for steps that aren't a click (typing, dragging).
 - **Stop / F10** clears everything. **New task** makes her forget the last task.
 - **Active** switch: turn it off and Eris ignores the hotkeys.
 - **Settings**: brain, voice, hotkeys, box timeout, keep-on-top, and a *Test the red box* button.
+- **Two looks** (Settings, then Eris, then Look): *Crimson*, soft and rounded, or *Neon HUD*:
+  black, neon red, sharp lines and streaks of red light. The box has a matching *Neon HUD* style
+  (Settings, then Guiding).
 
 ## Privacy
 
@@ -115,11 +122,12 @@ updates come from here, so protect it.
 
 ## Test lab
 
-**Settings, then App, then Test Eris** runs 17 tricky tests on made-up screens with her current
+**Settings, then App, then Test Eris** runs 20 tricky tests on made-up screens with her current
 brain. The tests cover a Google results page with a sponsored ad, a site's own search box vs the
 address bar, a login page, a fake "virus" scam pop-up, a page with hidden instructions aimed at AI,
 a Unity editor (select the object, Add Component, Rigidbody vs Rigidbody 2D, the tiny play
-button), a Blender-style editor and a game settings menu. Each reply is graded: did the box land on the right thing, did she avoid the ad, refuse
+button, dragging a script onto an object, a save shortcut), a long page you have to scroll, a
+Blender-style editor and a game settings menu. Each reply is graded: did the box land on the right thing, did she avoid the ad, refuse
 the password, spot the scam, ignore the hidden instructions, use the right format, and how fast
 was she. The report (in the log folder, under `tests`) shows exactly where she needs work.
 Also runnable as `python -m eris.bench`.
@@ -130,7 +138,8 @@ Also runnable as `python -m eris.bench`.
 or API key: the step flow (boxes, clicks, the watcher, calls, push-to-talk, privacy), both
 brains' requests (against fake Claude and Ollama servers, so it costs nothing), the box
 snapping and text reading, the test lab's grader, and a scripted session in the real window.
-Add `--quick` to skip the window. Run it after every change; it takes about half a minute.
+The window session runs once in each look. Add `--quick` to skip the window. Run it after every
+change; it takes about a minute.
 
 ## Voice
 

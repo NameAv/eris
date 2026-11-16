@@ -13,11 +13,12 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-FILES = ["test_parts.py", "test_steps.py", "test_brains.py", "test_lab.py", "test_window.py"]
+FILES = ["test_parts.py", "test_steps.py", "test_brains.py", "test_lab.py", "test_window.py",
+         "test_window.py:neon"]      # the real window again, in the Neon look
 
 
 def command(name):
-    cmd = [sys.executable, str(HERE / name)]
+    cmd = [sys.executable, str(HERE / name.split(":")[0])]
     if sys.platform != "linux" or os.environ.get("DISPLAY"):
         return cmd
     if shutil.which("xvfb-run"):
@@ -29,12 +30,13 @@ def main():
     quick = "--quick" in sys.argv
     results = []
     for name in FILES:
-        cmd = None if quick and name == "test_window.py" else command(name)
+        cmd = None if quick and name.startswith("test_window") else command(name)
         if cmd is None:
             results.append((name, "skipped", 0))
             continue
         start = time.time()
-        proc = subprocess.run(cmd, cwd=HERE, capture_output=True, text=True, timeout=300)
+        env = dict(os.environ, ERIS_THEME=name.split(":")[1]) if ":" in name else None
+        proc = subprocess.run(cmd, cwd=HERE, capture_output=True, text=True, timeout=300, env=env)
         took = time.time() - start
         failed = proc.returncode != 0
         if failed:      # show what went wrong, quietly otherwise
@@ -42,7 +44,7 @@ def main():
         results.append((name, "FAILED" if failed else "passed", took))
     print()
     for name, result, took in results:
-        print(f"  {result:8} {name:16} {took:5.1f}s")
+        print(f"  {result:8} {name:20} {took:5.1f}s")
     bad = [n for n, r, _ in results if r == "FAILED"]
     print("\nAll tests passed." if not bad else f"\n{len(bad)} file(s) failed: {', '.join(bad)}")
     sys.exit(1 if bad else 0)

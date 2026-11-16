@@ -28,9 +28,25 @@ def _rgb(hexcol):
     return tuple(int(hexcol[i:i + 2], 16) for i in (1, 3, 5))
 
 
-def render(w, h, hint="", grow=0):
+def _cut(rect, c):
+    """A rectangle with two opposite corners cut off (the neon HUD look)."""
+    x1, y1, x2, y2 = rect
+    return [(x1 + c, y1), (x2, y1), (x2, y2 - c), (x2 - c, y2), (x1, y2), (x1, y1 + c)]
+
+
+def _outline(d, rect, radius, colour, width, neon):
+    if neon:
+        pts = _cut(rect, max(3, radius))
+        d.line(pts + [pts[0]], fill=colour, width=width, joint="curve")
+    else:
+        d.rounded_rectangle(rect, radius, outline=colour, width=width)
+
+
+def render(w, h, hint="", grow=0, style=None):
     """RGBA image of the box for a w x h target, with the glow around it.
-    grow: draw the box this many px bigger (for the pop-in)."""
+    grow: draw the box this many px bigger (for the pop-in). style: "neon" for the
+    angular HUD box, otherwise rounded."""
+    neon = (style or config.BOX_STYLE) == "neon"
     red = _rgb(config.BOX_COLOR)
     W, H = w + 2 * GLOW, h + 2 * GLOW
     radius = max(4, min(10, min(w, h) // 3))
@@ -38,12 +54,14 @@ def render(w, h, hint="", grow=0):
 
     # soft glow
     glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    ImageDraw.Draw(glow).rounded_rectangle((x1 - 1, y1 - 1, x2 + 1, y2 + 1), radius + 2,
-                                           outline=red + (210,), width=6)
+    _outline(ImageDraw.Draw(glow), (x1 - 1, y1 - 1, x2 + 1, y2 + 1), radius + 2, red + (210,), 6, neon)
     glow = glow.filter(ImageFilter.GaussianBlur(6))
     # only glow outwards: never dim the thing you need to see
     inside = Image.new("L", (W, H), 0)
-    ImageDraw.Draw(inside).rounded_rectangle((x1 + 1, y1 + 1, x2 - 1, y2 - 1), radius, fill=255)
+    if neon:
+        ImageDraw.Draw(inside).polygon(_cut((x1 + 1, y1 + 1, x2 - 1, y2 - 1), radius), fill=255)
+    else:
+        ImageDraw.Draw(inside).rounded_rectangle((x1 + 1, y1 + 1, x2 - 1, y2 - 1), radius, fill=255)
     a = np.asarray(glow.getchannel("A"), dtype=np.uint8).copy()
     a[np.asarray(inside) > 0] = 0
     glow.putalpha(Image.fromarray(a))
@@ -52,11 +70,15 @@ def render(w, h, hint="", grow=0):
     big = Image.new("RGBA", (W * SS, H * SS), (0, 0, 0, 0))
     d = ImageDraw.Draw(big)
     s = lambda *v: [int(round(a * SS)) for a in v]
-    d.rounded_rectangle(s(x1 - 1.5, y1 - 1.5, x2 + 1.5, y2 + 1.5), (radius + 2) * SS,
-                        outline=(25, 4, 8, 95), width=SS)                 # thin dark edge: shows on light/red UIs
-    d.rounded_rectangle(s(x1, y1, x2, y2), radius * SS, outline=red + (255,), width=3 * SS)
-    d.rounded_rectangle(s(x1 + 3, y1 + 3, x2 - 3, y2 - 3), max(1, radius - 3) * SS,
-                        outline=(255, 255, 255, 70), width=SS)             # faint inner highlight
+    _outline(d, s(x1 - 1.5, y1 - 1.5, x2 + 1.5, y2 + 1.5), (radius + 2) * SS, (25, 4, 8, 95), SS,
+             neon)                                                         # thin dark edge: shows on light/red UIs
+    _outline(d, s(x1, y1, x2, y2), radius * SS, red + (255,), 3 * SS, neon)
+    _outline(d, s(x1 + 3, y1 + 3, x2 - 3, y2 - 3), max(1, radius - 3) * SS, (255, 255, 255, 70), SS,
+             neon)                                                         # faint inner highlight
+    if neon:   # HUD tabs: short bright bars just outside two corners
+        tab = min(40, (x2 - x1) // 3)
+        d.line(s(x2 - tab, y1 - 5, x2, y1 - 5), fill=red + (255,), width=3 * SS)
+        d.line(s(x1, y2 + 5, x1 + tab, y2 + 5), fill=red + (255,), width=3 * SS)
     crisp = big.resize((W, H), Image.LANCZOS)
     img = Image.alpha_composite(glow, crisp)
 
@@ -75,6 +97,95 @@ def render(w, h, hint="", grow=0):
         pill = ImageDraw.Draw(img)
         pill.rounded_rectangle((px, py, px + tw, py + th), 11, fill=red + (240,))
         pill.text((px + 9, py + 3), hint, font=f, fill=(255, 255, 255, 255))
+    return img
+
+
+def _glowing(size, draw):
+    """Draw something crisp with a soft crimson glow behind it."""
+    glow = Image.new("RGBA", size, (0, 0, 0, 0))
+    draw(ImageDraw.Draw(glow), 9, 150)
+    img = glow.filter(ImageFilter.GaussianBlur(6))
+    crisp = Image.new("RGBA", size, (0, 0, 0, 0))
+    draw(ImageDraw.Draw(crisp), 3, 255)
+    return Image.alpha_composite(img, crisp)
+
+
+def _edge_point(rect, toward):
+    """Where a line from the middle of rect toward a point leaves the rect."""
+    cx, cy = (rect[0] + rect[2]) / 2, (rect[1] + rect[3]) / 2
+    dx, dy = toward[0] - cx, toward[1] - cy
+    hw, hh = (rect[2] - rect[0]) / 2, (rect[3] - rect[1]) / 2
+    t = min(hw / abs(dx) if dx else 1e9, hh / abs(dy) if dy else 1e9, 1.0)
+    return cx + dx * t, cy + dy * t
+
+
+def render_drop(src, dst):
+    """A drag: a dashed box where to drop, and a glowing arrow from what to drag.
+    Screen rects in; (RGBA image, x, y) out."""
+    red = _rgb(config.BOX_COLOR)
+    pad = GLOW + 40
+    x0, y0 = int(min(src[0], dst[0]) - pad), int(min(src[1], dst[1]) - pad)
+    x1, y1 = int(max(src[2], dst[2]) + pad), int(max(src[3], dst[3]) + pad)
+    s = [v - o for v, o in zip(src, (x0, y0, x0, y0))]
+    d = [v - o for v, o in zip(dst, (x0, y0, x0, y0))]
+    a = _edge_point(s, ((d[0] + d[2]) / 2, (d[1] + d[3]) / 2))
+    b = _edge_point(d, ((s[0] + s[2]) / 2, (s[1] + s[3]) / 2))
+    length = math.hypot(b[0] - a[0], b[1] - a[1]) or 1
+    ux, uy = (b[0] - a[0]) / length, (b[1] - a[1]) / length
+    tip = (b[0] - ux * 6, b[1] - uy * 6)
+    base = (tip[0] - ux * 22, tip[1] - uy * 22)
+    head = [tip, (base[0] - uy * 12, base[1] + ux * 12), (base[0] + uy * 12, base[1] - ux * 12)]
+
+    def draw(dr, width, alpha):
+        col = red + (alpha,)
+        x, y = d[0], d[1]                       # dashed drop box
+        while x < d[2]:
+            dr.line((x, d[1], min(x + 12, d[2]), d[1]), fill=col, width=width)
+            dr.line((x, d[3], min(x + 12, d[2]), d[3]), fill=col, width=width)
+            x += 20
+        while y < d[3]:
+            dr.line((d[0], y, d[0], min(y + 12, d[3])), fill=col, width=width)
+            dr.line((d[2], y, d[2], min(y + 12, d[3])), fill=col, width=width)
+            y += 20
+        if length > 40:                          # the arrow
+            dr.line((a, base), fill=col, width=width + 1)
+            dr.polygon(head, fill=col)
+    img = _glowing((x1 - x0, y1 - y0), draw)
+    f = _font(13)
+    label = "drop here"
+    tw = int(f.getlength(label)) + 18
+    px, py = int(d[0]), int(d[3] + 8)
+    pill = ImageDraw.Draw(img)
+    pill.rounded_rectangle((px, py, px + tw, py + 22), 11, fill=red + (240,))
+    pill.text((px + 9, py + 3), label, font=f, fill=(255, 255, 255, 255))
+    return img, x0, y0
+
+
+def render_note(text, way=None):
+    """A glowing pill with a big chevron: "scroll down", "press Ctrl + S"."""
+    red = _rgb(config.BOX_COLOR)
+    f = _font(17)
+    tw = int(f.getlength(text))
+    arrow = 34 if way else 0
+    W, H = tw + arrow + 44 + 2 * GLOW, 50 + 2 * GLOW
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle((GLOW - 6, GLOW - 6, W - GLOW + 6, H - GLOW + 6), 28, fill=red + (60,))
+    img = img.filter(ImageFilter.GaussianBlur(7))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle((GLOW, GLOW, W - GLOW, H - GLOW), 25, fill=(18, 6, 9, 235),
+                        outline=red + (255,), width=3)
+    x, cy = GLOW + 20, H // 2
+    if way:
+        turn = {"down": 0, "up": 180, "right": 90, "left": 270}[way]
+        pts = [(-11, -9), (0, 2), (11, -9), (11, -2), (0, 9), (-11, -2)]   # a fat chevron "v"
+        rad = math.radians(turn)
+        for dy in (-5, 5):
+            d.polygon([(x + 11 + px * math.cos(rad) - (py + dy) * math.sin(rad),
+                        cy + px * math.sin(rad) + (py + dy) * math.cos(rad)) for px, py in pts],
+                      fill=red + (255,))
+        x += arrow
+    d.text((x, cy - 11), text, font=f, fill=(255, 255, 255, 255))
     return img
 
 
@@ -209,6 +320,12 @@ class GlowBox:
         self.hint = hint
         if self.rect:
             self._draw(alpha=self.alpha)
+
+    def show_picture(self, img, x, y):
+        """Show any picture (a drag arrow, a scroll arrow...) at a spot on screen."""
+        self._cancel()
+        self.rect = None
+        self._show_image(img, x, y)
 
     def hide(self):
         self._cancel()

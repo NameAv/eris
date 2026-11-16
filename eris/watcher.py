@@ -52,6 +52,7 @@ class Watcher:
         self.lock = threading.Lock()
         self.last_fire = 0.0
         self.keep_streak = 0
+        self.private_at, self.private = 0.0, False
         self.rebase()
         threading.Thread(target=self._loop, daemon=True).start()
 
@@ -133,14 +134,22 @@ class Watcher:
     def _ready(self):
         e = self.eris
         return (config.WATCH and e.active and e.waiting and not e.busy and e.mon
-                and e.auto_looks < MAX_LOOKS_PER_STEP and not privacy.should_look_away())
+                and e.auto_looks < MAX_LOOKS_PER_STEP)
+
+    def _private(self):
+        """Typing a password / using a private app? Asked at most twice a second (it's
+        a question to Windows); the quick looks in between use the last answer."""
+        now = time.time()
+        if now - self.private_at >= TICK:
+            self.private_at, self.private = now, bool(privacy.should_look_away())
+        return self.private
 
     def _loop(self):
         sct, last_full = None, 0.0
         while True:
             time.sleep(FAST)
             try:
-                if not self._ready():
+                if not self._ready() or self._private():
                     continue
                 sct = sct or screen.new_sct()
                 urgent = self._quick_look(sct)

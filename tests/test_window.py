@@ -44,6 +44,7 @@ eris.ears.Call = FakeCall
 import eris.speech  # noqa: E402
 eris.speech.Voice._sapi_loop = lambda self: None
 config.API_KEY, config.VOICE_ON = "sk-ant-test", False
+config.THEME = os.environ.get("ERIS_THEME", "crimson")     # run_all tries every look
 
 REPLIES = []
 
@@ -89,6 +90,11 @@ def run_steps(i=0):
 @step(300)
 def welcome():
     check("welcome greeting shown", app.welcome is not None and app.welcome.winfo_exists())
+    app.update()
+    right = app.winfo_rootx() + app.winfo_width()
+    check("all four step buttons fit in the window",
+          all(b.winfo_rootx() + b.winfo_width() <= right for b in app.ctl_row.winfo_children()),
+          [(b.cget("text"), b.winfo_rootx() + b.winfo_width(), right) for b in app.ctl_row.winfo_children()])
     check("talk button says click to call / hold to talk", "Click to call" in app.mic.cget("text"))
 
 
@@ -273,6 +279,28 @@ def box_followed():
 def wrong_box_pressed():
     check("Wrong box: she looked again and the button went quiet",
           app.wrong_btn.cget("state") == "disabled" and app.eris.box is None)
+
+
+@step(300)
+def extras_on_screen():
+    ov = app.overlay
+    placed, real = {}, ov._place
+    ov._place = lambda win, x, y, w, h: (placed.__setitem__(win, (x, y)), real(win, x, y, w, h))
+    ov.box(600, 200, 800, 240)
+    ov.drop(900, 500, 1100, 540)
+    check("a drag shows the drop box", ov.drop_rect == (900, 500, 1100, 540)
+          and placed.get(ov.drop_bars[0]) == (897, 497))
+    ov.move_box(600, 100, 800, 140)
+    check("...and it stays put when the dragged thing's box follows a scroll", ov.drop_rect == (900, 500, 1100, 540))
+    ov.clear_box()
+    ov.scroll_hint("down", 0, 0, 1440, 900)
+    check("scroll note near the bottom middle", placed[ov.note][1] > 700 and 500 < placed[ov.note][0] < 720
+          and "scroll down" in ov.note_label.cget("text"), placed[ov.note])
+    ov.badge("press  Ctrl + S", 0, 0, 1440, 900)
+    check("key badge near the top", 0 < placed[ov.note][1] < 200 and "Ctrl + S" in ov.note_label.cget("text"))
+    ov.clear_box()
+    check("clearing the box clears them all", ov.drop_rect is None and ov.extras_timer is None)
+    ov._place = real
 
 
 if os.environ.get("DISPLAY") and sys.platform.startswith("linux"):

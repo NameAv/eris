@@ -93,7 +93,15 @@ class Overlay:
         self.pill_label = tk.Label(self.pill, text="", bg=theme.CAPTION_BG, fg="white",
                                    font=(theme.FONT, 12, "bold"), padx=14, pady=6)
         self.pill_label.pack(padx=2, pady=2)
-        self.pieces = self.bars + [self.cap, self.pill]
+        # plain stand-ins for the extras (drop box, scroll / key note) when there's no glow
+        self.drop_bars = [_piece(master, config.BOX_COLOR) for _ in range(4)]
+        self.note = _piece(master, theme.ACCENT)
+        self.note_label = tk.Label(self.note, text="", bg=theme.ACCENT, fg="white",
+                                   font=(theme.FONT, 14, "bold"), padx=14, pady=6)
+        self.note_label.pack()
+        self.drop_rect = None
+        self.extras_timer = None
+        self.pieces = self.bars + [self.cap, self.pill] + self.drop_bars + [self.note]
         master.update_idletasks()
         self.handles = {}
         for p in self.pieces:
@@ -105,20 +113,21 @@ class Overlay:
         self.pill_shown = False
         self.box_timer = None
         self.flash_jobs = []
-        self.glow = None
-        if sys.platform == "win32" and config.BOX_STYLE == "glow":
+        self.glow = self.extra = None
+        if sys.platform == "win32" and config.BOX_STYLE in ("glow", "neon"):
             try:
                 from .glowbox import GlowBox
                 self.glow = GlowBox(master)
+                self.extra = GlowBox(master)   # drag arrows, scroll and key notes
             except Exception:
-                self.glow = None   # plain bars instead
+                self.glow = self.extra = None   # plain bars instead
         self.hidden_from_capture = False
         self.apply_capture()
         master.after(1500, self._keep_on_top)
 
     def apply_capture(self):
         """Hide the box from screenshots, unless you want it in your recordings."""
-        groups = [self.handles.get(p) for p in self.pieces] + ([[self.glow.hwnd]] if self.glow else [])
+        groups = [self.handles.get(p) for p in self.pieces] + [[g.hwnd] for g in (self.glow, self.extra) if g]
         hide = not config.BOX_IN_RECORDINGS
         results = [_hide_from_capture(h, hide) for h in groups if h]
         self.hidden_from_capture = bool(results) and all(results)
@@ -176,12 +185,74 @@ class Overlay:
         if not self.rect:
             return
         self.rect = (int(x1), int(y1), int(x2), int(y2))
+        self._move_extras()
         if self.glow:
             self.glow.move(self.rect)
             return
         self._draw_bars()
         if self.hint:
             self._place_hint()
+
+    def _move_extras(self):
+        if self.drop_rect:
+            self.drop(*self.drop_rect)
+
+    # ---- extras: where to drop, which way to scroll, which key to press ----
+    def drop(self, x1, y1, x2, y2):
+        """A drag: a dashed box where to drop the boxed thing, with an arrow to it."""
+        if not self.rect:
+            return
+        self.drop_rect = (int(x1), int(y1), int(x2), int(y2))
+        if self.extra:
+            from .glowbox import render_drop
+            img, x, y = render_drop(self.rect, self.drop_rect)
+            self.extra.show_picture(img, x, y)
+            return
+        t = max(2, config.BOX_WIDTH - 1)
+        a, b, c, d = self.drop_rect
+        for bar, geo in zip(self.drop_bars, [(a - t, b - t, c - a + 2 * t, t), (a - t, d, c - a + 2 * t, t),
+                                             (a - t, b, t, d - b), (c, b, t, d - b)]):
+            self._place(bar, *geo)
+            _raise(bar, self.handles.get(bar))
+
+    def scroll_hint(self, way, left, top, w, h):
+        self._show_note(f"scroll {way}", way, (left, top, w, h))
+
+    def badge(self, text, left, top, w, h):
+        self._show_note(text, None, (left, top, w, h))
+
+    def _show_note(self, text, way, area):
+        """A big note at the edge of the app's window (the side to scroll toward)."""
+        left, top, w, h = area
+        if self.extra:
+            from .glowbox import render_note
+            img = render_note(text, way)
+            nw, nh = img.size
+        else:
+            self.note_label.configure(text={"down": "▼  ", "up": "▲  ", "left": "◀  ", "right": "▶  "}.get(way, "") + text)
+            self.note.update_idletasks()
+            nw, nh = self.note_label.winfo_reqwidth(), self.note_label.winfo_reqheight()
+        spots = {"down": (left + (w - nw) // 2, top + h - nh - 40), "up": (left + (w - nw) // 2, top + 70),
+                 "left": (left + 30, top + (h - nh) // 2), "right": (left + w - nw - 30, top + (h - nh) // 2)}
+        x, y = spots.get(way, (left + (w - nw) // 2, top + 90))
+        if self.extra:
+            self.extra.show_picture(img, x, y)
+        else:
+            self._place(self.note, x, y, nw, nh)
+            _raise(self.note, self.handles.get(self.note))
+        if self.extras_timer:
+            self.master.after_cancel(self.extras_timer)
+        self.extras_timer = self.master.after(int(config.BOX_TIMEOUT * 1000), self._clear_extras)
+
+    def _clear_extras(self):
+        if self.extras_timer:
+            self.master.after_cancel(self.extras_timer)
+            self.extras_timer = None
+        self.drop_rect = None
+        if self.extra:
+            self.extra.hide()
+        for p in self.drop_bars + [self.note]:
+            self._park(p)
 
     def _flash(self):
         """Blink a few times so your eye snaps to it."""
@@ -226,6 +297,7 @@ class Overlay:
         self.flash_jobs = []
         self.rect = None
         self.hint = ""
+        self._clear_extras()
         if self.glow:
             self.glow.hide()
         for p in self.bars + [self.cap]:

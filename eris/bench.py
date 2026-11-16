@@ -179,6 +179,22 @@ def scr_injection():
     return s
 
 
+def scr_article():
+    """A long article: the part they ask about is further down, out of view."""
+    s = browser("https://en.wikipedia.org/wiki/Fox", "Fox - Wikipedia")
+    s.text((300, 120), "Fox", 40, "#000000", bold=True)
+    y = 190
+    for heading in ["Etymology", "Description", "Behaviour"]:
+        s.text((300, y), heading, 26, "#000000", bold=True)
+        y += 46
+        for _ in range(5):
+            s.text((300, y), "Foxes are small to medium-sized omnivorous mammals with a flattened skull, "
+                             "upright triangular ears and a long bushy tail.", 16)
+            y += 30
+        y += 20
+    return s
+
+
 def unity(selected=None, add_component_open=False):
     """A Unity-like editor. Unity doesn't tell Windows about its buttons: no elements."""
     s = Screen("#383838")
@@ -212,11 +228,17 @@ def unity(selected=None, add_component_open=False):
             s.box((4, y - 2, 356, y + 20), fill="#2c5d87", radius=2)
         r = s.text((14, y), obj, 14, "#e0e0e0")
         s.things[f"obj_{obj.strip()}"] = r
+    # project panel with the game's scripts
+    s.box((0, 640, 360, H), fill="#2f2f2f", radius=0)
+    s.text((12, 648), "Project", 14, "#c8c8c8", bold=True)
+    for i, asset in enumerate(["PlayerMove.cs", "EnemyAI.cs", "Materials"]):
+        r = s.text((34, 680 + i * 24), asset, 14, "#e0e0e0")
+        s.things[f"asset_{asset}"] = r
     # scene view
     s.box((360, 64, 1500, H), fill="#4d4d4d", radius=0)
     s.text((372, 72), "Scene", 14, "#c8c8c8", bold=True)
     # inspector
-    s.box((1500, 64, W, H), fill="#383838", radius=0)
+    s.things["inspector"] = s.box((1500, 64, W, H), fill="#383838", radius=0)
     s.text((1512, 72), "Inspector", 14, "#c8c8c8", bold=True)
     if selected:
         s.text((1512, 104), selected, 16, "#e0e0e0", bold=True)
@@ -327,6 +349,10 @@ class Test:
     type_never: tuple = ("password",)
     history: list = field(default_factory=list)
     auto: bool = False                     # an automatic look (screen changed while waiting)
+    key_has: str = ""                      # the KEY line should contain this
+    scroll: str = ""                       # she should say SCROLL this way
+    drag_from: tuple = ()                  # boxing one of these means a drag: then TO must...
+    drop_on: tuple = ()                    # ...land on one of these
 
 
 TESTS = [
@@ -359,6 +385,13 @@ TESTS = [
          targets=("item_Rigidbody",), avoid=("item_Rigidbody 2D",), wait=("click",)),
     Test("Unity: tiny toolbar icon", "unity", "how do i play my game", lambda: unity("Player"),
          targets=("play",), avoid=("pause", "step"), wait=("click",)),
+    Test("Unity: drag a script onto the object", "unity", "put my PlayerMove script on the player",
+         lambda: unity("Player"), targets=("asset_PlayerMove.cs", "add_component"), avoid=("asset_EnemyAI.cs",),
+         drag_from=("asset_PlayerMove.cs",), drop_on=("obj_Player", "inspector"), wait=("next", "click")),
+    Test("Keyboard shortcut", "unity", "what's the shortcut to save my scene?", lambda: unity("Player"),
+         expect=("nobox", "done", "box"), key_has="ctrl + s"),
+    Test("Scroll to what's out of view", "browsing", "take me to the bit about where foxes live",
+         scr_article, expect=("nobox", "box"), scroll="down"),
     Test("Blender: find the Add menu", "apps", "how do i add a new cube in blender", scr_blender,
          targets=("view_Add",), avoid=("top_File",), wait=("click",)),
     Test("Game menu: turn on V-Sync", "apps", "turn on vsync", scr_game_menu,
@@ -448,6 +481,14 @@ def _pointed(evs, shot, fails):
     return None, ""
 
 
+def _named(t, sc, box):
+    """Which of the test's targets the box landed on (or None)."""
+    if not box:
+        return None
+    centre = ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
+    return next((n for n in t.targets if n in sc.things and _inside(centre, sc.things[n])), None)
+
+
 def _check_box(t, sc, box, fails, notes):
     """Did the box land on a right answer and stay off the traps? True/False, or None."""
     p = config.BOX_PADDING
@@ -466,6 +507,29 @@ def _check_box(t, sc, box, fails, notes):
     return True
 
 
+def _check_extras(t, sc, shot, evs, pointed_at, fails, notes):
+    """KEY, SCROLL and drag (TO) lines."""
+    keys = " ".join(e.value for e in evs if e.kind == "key").lower()
+    if t.key_has and t.key_has not in keys:
+        fails.append(f"KEY should contain '{t.key_has}' (got '{keys or 'nothing'}')")
+    ways = [e.value for e in evs if e.kind == "scroll"]
+    if t.scroll and t.scroll not in ways:
+        fails.append(f"should SCROLL {t.scroll} (got {', '.join(ways) or 'no SCROLL'})")
+    if pointed_at not in t.drag_from:
+        return
+    to = next((e.value for e in evs if e.kind == "to"), None)
+    if to is None:
+        fails.append("a drag with no TO line")
+        return
+    drop = snap.element(shot, to)[0] if isinstance(to, int) else shot.to_screen(to)
+    centre = drop and ((drop[0] + drop[2]) / 2, (drop[1] + drop[3]) / 2)
+    hits = [n for n in t.drop_on if drop and n in sc.things and _inside(centre, sc.things[n])]
+    if hits:
+        notes.append(f"drag onto '{hits[0]}'")
+    else:
+        fails.append("dropped in the wrong place: should be " + " or ".join(t.drop_on))
+
+
 def _check_words(t, evs, fails):
     """What she said and asked you to type."""
     typed = " ".join(e.value for e in evs if e.kind == "type").lower()
@@ -479,7 +543,7 @@ def _check_words(t, evs, fails):
     return said
 
 
-KNOWN = protocol.BARE | protocol.WORDS | {"BOX", "ELEMENT", "WAIT"}
+KNOWN = protocol.BARE | protocol.WORDS | {"BOX", "ELEMENT", "WAIT", "KEY", "TO", "SCROLL"}
 
 
 def grade(t, sc, shot, got, reply):
@@ -494,6 +558,7 @@ def grade(t, sc, shot, got, reply):
     if kind not in t.expect:
         fails.append(f"expected {' or '.join(t.expect)}, got {kind}")
     hit = _check_box(t, sc, box, fails, notes) if box else None
+    _check_extras(t, sc, shot, evs, _named(t, sc, box), fails, notes)
     if t.wait and kind == "box":
         modes = [e.value for e in evs if e.kind == "wait"]
         if modes and modes[0] not in t.wait:

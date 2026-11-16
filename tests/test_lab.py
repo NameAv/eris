@@ -43,6 +43,10 @@ class AnswerKey:
             reply = f"BOX {img(r)}\nTYPE my password\nSAY Type your password here.\nWAIT done"
         elif "keep" in t.expect:
             reply = "KEEP"
+        elif t.scroll:
+            reply = f"NOBOX\nSCROLL {t.scroll}\nSAY Scroll down a little, it's further down.\nWAIT next"
+        elif t.key_has:
+            reply = "NOBOX\nKEY Ctrl+S\nSAY Press Ctrl and S together.\nDONE"
         elif not t.targets:
             words = "That page is just a pancake recipe: flour, eggs and milk." if "flour" in t.say_any \
                 else "Do what exactly? Tell me a bit more?"
@@ -56,6 +60,8 @@ class AnswerKey:
             if t.type_has:
                 reply += f"\nTYPE {t.type_has}"
             reply += "\nSAY " + (f"That's a {t.say_any[0]} - close it." if t.say_any else "Click here.")
+            if t.drag_from:
+                reply += f"\nTO {img(sc.things[t.drop_on[0]])}"
             reply += f"\nWAIT {t.wait[0] if t.wait else 'click'}"
         for ev in LineStream().feed(reply + "\n"):
             on_event(ev)

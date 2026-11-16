@@ -304,15 +304,18 @@ def _connector(length, variant):
             cv.line([(n + 4, c), (k1, c), (k1 + 4, c - 4), (k2, c - 4), (k2 + 4, c), (L, c)], col, 1.5)
         else:
             cv.line([(n + 4, c), (L, c)], col, 1.5)
-    elif variant == 1:                    # one line with an outlined slanted tab, a node and a small square
-        cv.line([(0, c), (L, c)], col, 1.5)
+    elif variant == 1:                    # one line with an outlined slanted tab and a ring node
         bw = size(0.2, 90)
         tab = [(4, c - 9), (4 + bw, c - 9), (11 + bw, c - 1), (11, c - 1)]
         cv.line(tab, col, 1.2, closed=True)
         _hatch(cv, 14, 4 + bw, c - 8, c - 2, red + (190,), gap=5)
         n = max(18 + bw + 20, at(0.6))
-        if n < L - 20:
+        if n < L - 20:                      # the line stops at the ring and carries on after it
+            cv.line([(0, c), (n - 4, c)], col, 1.5)
             cv.arc(n, c, 4, 0, 360, col, 1.5)
+            cv.line([(n + 4, c), (L, c)], col, 1.5)
+        else:
+            cv.line([(0, c), (L, c)], col, 1.5)
     else:                                 # peaked: a sharp peak, a notched plateau, ticks, a diamond, chevrons
         p0 = at(0.1)
         q1, q2 = p0 + 26, p0 + 26 + size(0.22, 110)               # the raised plateau

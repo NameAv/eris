@@ -1,3 +1,4 @@
+v1.19.4: The drag line no longer runs through its little ring.
 v1.19.3: Drag lines: the little box near the arrow is gone, and the third design is new (a sharp peak, a notched raised stretch, ticks, a diamond and chevrons).
 v1.19.2: Each drag line is a single line now (no doubled-up lines or bars beside it).
 v1.19.1: The three drag lines are now all thin lines and outlines (no solid bars).

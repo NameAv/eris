@@ -291,7 +291,7 @@ def _connector(length, variant):
     c = LINE_H / 2
     at = lambda f: L * f
     size = lambda f, most: min(L * f, most)
-    if variant == 0:                      # stepped: a line, a raised hatched step, a node, a long bar
+    if variant == 0:                      # stepped: a line, a raised hatched step, a node, a slim bar
         s1, s2 = at(0.12), at(0.12) + size(0.25, 120)
         cv.line([(0, c), (s1, c), (s1 + 5, c - 5), (s2, c - 5), (s2 + 5, c)], col, 1.5)
         _hatch(cv, s1 + 10, s2 - 6, c - 4, c, col)
@@ -299,33 +299,30 @@ def _connector(length, variant):
         cv.line([(s2 + 5, c), (n - 5, c)], col, 1.5)
         cv.arc(n, c, 4, 0, 360, col, 1.5)
         b1 = n + 14
-        cv.line([(n + 4, c), (b1, c)], col, 1.5)
-        if L - 6 > b1 + 20:
-            cv.poly([(b1, c - 1), (b1 + 5, c - 5), (L - 9, c - 5), (L - 4, c), (L - 9, c + 3), (b1, c + 3)], col)
-        else:
-            cv.line([(b1, c), (L, c)], col, 1.5)
-    elif variant == 1:                    # rails: two thin lines, a slanted block, slashes, a node
+        cv.line([(n + 4, c), (L, c)], col, 1.5)
+        if L - 6 > b1 + 20:                # a slim outlined bar riding on the line
+            cv.line([(b1, c), (b1 + 4, c - 4), (L - 10, c - 4), (L - 6, c)], col, 1.2)
+    elif variant == 1:                    # rails: two thin lines, an outlined slanted tab, a node
         cv.line([(0, c - 1.5), (L, c - 1.5)], col, 1)
         cv.line([(0, c + 2.5), (L, c + 2.5)], red + (150,), 1)
         bw = size(0.2, 90)
-        cv.poly([(4, c - 9), (4 + bw, c - 9), (11 + bw, c - 2), (11, c - 2)], col)
-        h1 = 18 + bw
-        _hatch(cv, h1, h1 + size(0.12, 50), c - 7, c - 2.5, col)
-        n = max(h1 + size(0.12, 50) + 20, at(0.6))
+        tab = [(4, c - 9), (4 + bw, c - 9), (11 + bw, c - 2), (11, c - 2)]
+        cv.line(tab, col, 1.2, closed=True)
+        _hatch(cv, 14, 4 + bw, c - 8, c - 3, red + (190,), gap=5)
+        n = max(18 + bw + 20, at(0.6))
         if n < L - 20:
             cv.arc(n, c - 1.5, 4, 0, 360, col, 1.5)
         if L > 120:
-            cv.poly([(L - 30, c - 7), (L - 14, c - 7), (L - 14, c - 2), (L - 30, c - 2)], col)
-    else:                                 # ridged: a thick bar with bumps, thinning to a line
-        e = at(0.8)
-        pts = [(0, c + 3), (0, c - 2)]
+            cv.line([(L - 30, c - 8), (L - 16, c - 8), (L - 16, c - 3), (L - 30, c - 3)], col, 1.2, closed=True)
+    else:                                 # ridged: one thin line that rises over a few bumps
+        pts = [(0, c)]
         for f in (0.25, 0.6):
             x = at(f)
-            pts += [(x - 11, c - 2), (x - 5, c - 8), (x + 7, c - 8), (x + 13, c - 2)]
-        pts += [(e - 8, c - 2), (e, c + 3)]
-        cv.poly(pts, col)
-        cv.line([(e, c + 1.5), (L, c + 1.5)], col, 1.5)
-        cv.poly([(at(0.42), c + 3), (at(0.42) + 8, c + 7), (at(0.42) + 34, c + 7), (at(0.42) + 40, c + 3)], col)
+            pts += [(x - 11, c), (x - 5, c - 6), (x + 7, c - 6), (x + 13, c)]
+        pts.append((L, c))
+        cv.line(pts, col, 1.5)
+        u = at(0.42)                       # and a short underline
+        cv.line([(u, c + 3), (u + 6, c + 6), (u + 34, c + 6)], col, 1.2)
     return cv.finish()
 
 

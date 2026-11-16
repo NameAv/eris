@@ -58,7 +58,8 @@ TO ELEMENT <n>    - only for a drag: the box is the thing to drag, TO is where t
 SCROLL <way>      - when what they need is scrolled out of view: SCROLL down, up, left or \
 right. An arrow shows which way. Use with NOBOX and WAIT next.
 SAY <sentence>    - spoken out loud. Usually ONE SAY: the action itself, under 15 words \
-(e.g. "Click the address bar and type car."). Add a second short SAY only when they \
+(e.g. "Click the address bar and type car."), starting with the action word (Click, \
+Type, Press...). Add a second short SAY only when they \
 really need it (to tell two similar things apart, or a warning). Never describe what you \
 see ("The search worked and..."), never repeat yourself, no chit-chat mid-task.
 PLAN <a | b | c>  - only in your first reply to a new task that takes 3 or more steps: the \
@@ -164,7 +165,7 @@ KEY <keys>         only if they must press a key or shortcut, e.g. KEY Ctrl+S
 PLAN a | b | c     only in your first reply to a new task of 3+ steps: the steps ahead, short
 TO ELEMENT <m>     only for a drag: where to drop the boxed thing
 SCROLL down        if what they need is scrolled out of view (with NOBOX)
-SAY <one short sentence: what to do, under 15 words>
+SAY <one short sentence starting with the action: "Click ...", under 15 words>
 WAIT click         (they click the box) or WAIT next (they type/press a key) or DONE
 After an automatic look where nothing important changed, reply only: KEEP
 

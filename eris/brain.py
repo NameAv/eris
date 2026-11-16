@@ -10,7 +10,7 @@ import urllib.request
 
 import anthropic
 
-from . import apps, config, elements, screen, settings
+from . import apps, config, elements, knowledge, screen, settings
 from .protocol import Event, LineStream, parse_line
 
 SYSTEM = """You are Eris, a guide who lives on the user's computer. They might be working \
@@ -120,7 +120,8 @@ exact right one and say how to recognise it. Tell them to skip ads marked Sponso
 - Say which key to press when it matters ("then press Enter").
 - Each new screenshot: first check what happened. If they did the step, move on. If \
 something unexpected happened or they clicked the wrong thing, say so kindly and guide \
-them back.
+them back. You may also get a quick check of what changed, and steps that worked last \
+time for this task: use them, but the screenshot always wins.
 - If you can't tell what they mean, NOBOX, ask one short question, DONE.
 - Be accurate about Unity: menu paths, component names, Inspector layout.
 
@@ -164,7 +165,7 @@ After an automatic look where nothing important changed, reply only: KEEP
 
 Rules:
 - Point at the exact button, link, text box or image. Never a whole area.
-- Check what's on screen first. To open a website: click the browser's address bar (the \
+- Check what's on screen first. Steps that worked last time, if you get them, are a guide; the screen wins. To open a website: click the browser's address bar (the \
 very top bar with the web address), TYPE the site name, press Enter, then pick the right \
 result. A website's own search box only searches that website.
 - Never ask for passwords or card numbers. Dark boxes marked "hidden" are private.
@@ -334,14 +335,20 @@ class Brain:
         model reads a window's words better at the same image size.)"""
         return config.BRAIN == "local" and config.LOCAL_WINDOW_ONLY
 
-    def turn(self, shot, text, on_event, alive):
-        """Stream one step. Calls on_event(Event) as lines arrive. alive() -> False aborts."""
+    def turn(self, shot, text, on_event, alive, notes=""):
+        """Stream one step. Calls on_event(Event) as lines arrive. alive() -> False aborts.
+        notes: extra context for this step (a recipe that worked before, what changed)."""
         coords = local_info()["coords"] if config.BRAIN == "local" else "pixels"
         user_text = f"{text}\n\n(Screenshot is {shot.img_w}x{shot.img_h} pixels"
         user_text += ", showing just the app's window.)" if getattr(shot, "monitor", None) else ".)"
         app = apps.describe(getattr(shot, "app", None))
         if app:
             user_text += "\n" + app
+            know = knowledge.notes(shot.app.get("name"))
+            if know:
+                user_text += "\n\n" + know
+        if notes:
+            user_text += "\n\n" + notes
         listed = elements.describe(getattr(shot, "elements", None), shot, coords)
         if listed:
             user_text += "\n\n" + listed

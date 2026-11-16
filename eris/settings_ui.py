@@ -663,6 +663,8 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _forget_all(self):
         settings.forget_all()
+        from . import recipes
+        recipes.forget()
         self.app.eris.brain.reset()
         self.app.avatar.load()
         self.toast("✓ She forgot everything")

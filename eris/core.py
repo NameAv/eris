@@ -10,11 +10,11 @@ import traceback
 
 from pynput import keyboard
 
-from . import apps, config, elements, ocr, privacy, screen, settings, snap
+from . import apps, config, elements, ocr, privacy, recipes, screen, settings, snap
 from .brain import Brain, locate
 from .speech import Voice, beep
 from .tracker import Tracker
-from .watcher import Watcher
+from .watcher import Watcher, changed as screen_changed
 
 WATCH_PROMPT = ("(Automatic look: my screen changed while you were waiting.) Here's my screen "
                 "now. If the step is done, give the next step, or DONE if the task is finished. "
@@ -41,6 +41,10 @@ class Eris:
         self.box = None         # current box in screen coords
         self.track = None       # follows the box's button when you scroll (tracker.Tracker)
         self.last_shot = None   # the screenshot of the step on screen (for "Wrong box")
+        self.task = None        # the task in hand: what you asked, the app, its steps so far
+        self.check = None       # the screen as a step was set, to see what your click changed
+        self.retried = False    # "give it another click" said once for this step
+        self.pending_note = ""  # what that check found, for the next look
         self.waiting = None     # None | "click" | "next"
         self.steps = 0
         self.talking = False
@@ -94,6 +98,7 @@ class Eris:
 
     def cancel(self):
         self._new_gen()
+        self.task = self.check = None
         self.voice.stop()
         self._clear()
         self.ui.cmd("status", "")
@@ -125,13 +130,17 @@ class Eris:
         self._clear()
         self.steps = 0
         self.auto_looks = self.task_looks = 0
+        self.task = {"text": text, "app": None, "steps": [], "wrong": False, "recipe": None}
+        self.check, self.retried, self.pending_note = None, False, ""
         my = self._new_gen()
         threading.Thread(target=self._turn_safe, args=(my, text, False, True), daemon=True).start()
 
-    def advance(self):
-        """Step finished (click in box or Next): box goes away NOW, then look again."""
+    def advance(self, clicked=False):
+        """Step finished (click in box or Next): box goes away NOW, then a quick free check
+        of what changed, then look again."""
         if not self.waiting:
             return
+        ref, self.check = self.check, None
         self.voice.stop()
         self._clear()
         self.steps += 1
@@ -145,9 +154,74 @@ class Eris:
 
         def later():
             time.sleep(config.SETTLE_DELAY)   # let menus/panels open first
-            if my == self.gen:
-                self._turn_safe(my, NEXT_STEP_PROMPT)
+            if my != self.gen:
+                return
+            seen = self._what_changed(ref) if ref else ""
+            if seen == "nothing" and clicked:
+                time.sleep(1.0)                # a slow app: give it a moment more
+                if my != self.gen:
+                    return
+                seen = self._what_changed(ref)
+                if seen == "nothing" and not self.retried and ref.get("box"):
+                    self._click_again(my, ref)
+                    return
+            self.retried = False
+            if seen:
+                self.pending_note = ("(Quick check after that step: "
+                                     + ("nothing on the screen changed" if seen == "nothing" else seen) + ".)")
+            self._turn_safe(my, NEXT_STEP_PROMPT)
         threading.Thread(target=later, daemon=True).start()
+
+    # ---------- checking a step, recipes ----------
+    def _what_changed(self, ref):
+        """What your last action changed, from a free before/after look: "nothing", a
+        short description, or "" if it can't tell."""
+        win, before = apps.front_window(), ref.get("win") or {}
+        if win and before and win.get("hwnd") != before.get("hwnd"):
+            return f'a different window is in front now: {win["name"]} ("{win["title"][:60]}")'
+        now = self.watcher.look()
+        if now is None or ref.get("thumb") is None:
+            return ""
+        part = screen_changed(now, ref["thumb"])
+        if part < 0.0003:
+            return "nothing"
+        return "only a small part of the screen changed" if part < 0.02 else "a lot of the screen changed"
+
+    def _click_again(self, my, ref):
+        """Your click didn't change anything: put the box back and say so (no AI needed)."""
+        self.retried = True
+        self.steps -= 1
+        box = ref["box"]
+        self.box, self.box_gen, self.waiting = box, my, "click"
+        self.ui.cmd("box", *box)
+        self._start_tracking(self.last_shot, box)
+        msg = "Nothing happened yet. Give it another click, right inside the box."
+        self.ui.log("eris", msg)
+        self.voice.say(msg)
+        self.ui.cmd("state", "guiding")
+        self.check = ref
+        self.watcher.rebase()
+
+    def _set_check(self, my, shot):
+        """Remember how the screen looks as a step is set (for _what_changed)."""
+        thumb = self.watcher.look()
+        if my == self.gen:
+            self.check = {"thumb": thumb, "win": getattr(shot, "app", None), "box": self.box}
+
+    def _log_step(self, text):
+        t = self.task
+        if t is not None and text and (not t["steps"] or t["steps"][-1] != text):
+            t["steps"].append(text)
+
+    def _finish_task(self):
+        """The task is done: keep its steps as a recipe, unless something went wrong."""
+        t, self.task = self.task, None
+        if t and not t["wrong"] and t["app"] and len(t["steps"]) >= 2:
+            try:
+                recipes.remember(t["text"], t["app"], t["steps"])
+                self.ui.log("debug", f"recipe kept: {t['text']!r} ({len(t['steps'])} steps)")
+            except OSError as e:
+                self.ui.log("debug", f"couldn't keep the recipe: {e}")
 
     def wrong_box(self):
         """You said the box is on the wrong thing: keep a copy for the test lab (on your
@@ -155,6 +229,8 @@ class Eris:
         if not self.box or not self.active:
             return
         box, shot, history = self.box, self.last_shot, list(self.brain.history[-2:])
+        if self.task:
+            self.task["wrong"] = True     # this one won't be kept as a recipe
         threading.Thread(target=self._save_mistake, args=(shot, box, history), daemon=True).start()
         self.voice.stop()
         self._clear()
@@ -256,7 +332,7 @@ class Eris:
         self.ui.cmd("monitor", *self.mon)
         if soft:
             self.ui.cmd("status", "Checking...")
-        self.brain.turn(shot, text, step.on_event, step.alive)
+        self.brain.turn(shot, text, step.on_event, step.alive, self._notes(shot))
         step.times["done"] = time.time() - t0
         step.over = True
         step.track()
@@ -280,10 +356,29 @@ class Eris:
             return
         if self.waiting:
             self.watcher.rebase()
+            self._set_check(my, shot)
             if self.waiting == "next" and not soft and not self.told_watch:
                 self.told_watch = True
                 self.ui.log("info", "I'm watching your screen and will notice when you're done "
                                     f"(or press {config.NEXT_KEY.upper()}).")
+
+    def _notes(self, shot):
+        """Extra context for this look: a recipe that worked before, what the last step changed."""
+        notes = []
+        t = self.task
+        if t is not None:
+            if t["app"] is None:            # the task's first look: which app, any recipe for it?
+                app = shot.app.get("name") if isinstance(getattr(shot, "app", None), dict) else ""
+                t["app"] = app or ""
+                t["recipe"] = recipes.find(t["text"], app) if app else None
+                if t["recipe"]:
+                    self.ui.log("debug", f"using a recipe: {t['recipe']['task']!r}")
+            if t["recipe"]:
+                notes.append(recipes.describe(t["recipe"], self.steps + 1))
+        if self.pending_note:
+            notes.append(self.pending_note)
+            self.pending_note = ""
+        return "\n\n".join(notes)
 
     def _take_shot(self, allow_pre=False):
         """Screenshot with private fields blacked out. For a spoken question, uses the
@@ -552,7 +647,7 @@ class Eris:
         if not (x1 - s <= x <= x2 + s and y1 - s <= y <= y2 + s):
             return
         if self.waiting == "click":
-            self.advance()
+            self.advance(clicked=True)
         elif self.busy and self.box_gen == self.gen:
             self.early_click = self.gen   # she's still talking; move on once she's done
 
@@ -592,7 +687,11 @@ class Step:
         self.avatar = False        # the box is her new profile picture
         self.refining = False
         self.snapped = threading.Event()
-        self.hint = ""             # what she asked you to type
+        self.hint = ""             # what she asked you to type (or press), shown with the box
+        self.said = ""             # her first line: the instruction (kept for recipes)
+        self.what = ""             # what she pointed at
+        self.typed = self.key = ""
+        self.dragged = False
         self.over = False          # the brain has finished this reply
         self.final = None          # where the box ends up after refining
 
@@ -656,6 +755,7 @@ class Step:
         self.refining = False
 
     def on_what(self, what):
+        self.what = what
         if self._my_box():
             self.refine(what)
 
@@ -670,13 +770,14 @@ class Step:
         self.e.ui.log("info", f"Eris will remember: {fact}")
 
     def on_type(self, text):
-        self.hint = text
+        self.hint = self.typed = text
         self.e.ui.cmd("type_hint", text)
         self.e.ui.log("hint", f"Type:  {text}")
 
     def on_key(self, keys):
         e = self.e
         e.ui.log("hint", f"Press:  {keys}")
+        self.key = keys
         if self._my_box():
             self.hint = keys
             e.ui.cmd("type_hint", keys, "press:  ")
@@ -698,6 +799,7 @@ class Step:
             rough = shot.to_screen(where)
             drop = snap.snap(shot, rough) or rough
         if drop:
+            self.dragged = True
             self.e.ui.cmd("drop", *drop)
 
     def _area(self):
@@ -710,11 +812,13 @@ class Step:
         e.ui.cmd("state", "guiding")
         e.ui.log("eris", words)
         e.voice.say(words)
+        self.said = self.said or words
         if self._my_box():   # no WHAT line: use what she said
             self.refine(words)
 
     def on_wait(self, mode):
         self.ended = True
+        self.e._log_step(self.summary())
         self.e.waiting = mode if self.e.box or mode == "next" else "next"
 
     def on_keep(self, _):   # KEEP after other lines: wait for you to press Next
@@ -723,10 +827,25 @@ class Step:
     def on_done(self, _):
         e = self.e
         self.ended = True
+        e._finish_task()
         e.waiting = e.box = e.track = None
         e.ui.cmd("clear_box")
         e.ui.cmd("state", "ready")
         e.steps = 0
+
+    def summary(self):
+        """This step in a few words, for a recipe: "Click Add Component (the blue Add
+        Component button) - type rigidbody"."""
+        if not self.said:
+            return ""
+        s = self.said + (f" ({self.what})" if self.what else "")
+        if self.typed:
+            s += f" - type {self.typed}"
+        if self.key:
+            s += f" - press {self.key}"
+        if self.dragged:
+            s += " - drag it to the drop target"
+        return s
 
     # ---- the box ----
     def _show(self, box, kind=None):

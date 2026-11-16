@@ -42,7 +42,8 @@ def _cursor_in(box):
     return box[0] <= p.x <= box[2] and box[1] <= p.y <= box[3]
 
 
-def _diff(a, b):
+def changed(a, b):
+    """Share of the screen that differs between two thumbnails (0..1)."""
     return float(np.mean(np.abs(a - b) > PIXEL_DIFF))
 
 
@@ -75,11 +76,11 @@ class Watcher:
         with self.lock:
             self.nudged_at = time.time()
 
-    def _masks(self, mon):
+    def _masks(self, mon, box=True):
         """Screen areas to ignore: Eris's windows, the box + type hint, the status pill."""
         left, top, w, h = mon
         rects = list(self.eris.ui.window_rects())
-        if self.eris.box:
+        if box and self.eris.box:
             x1, y1, x2, y2 = self.eris.box
             rects.append((x1 - 30, y1 - 90, max(x2, x1 + 520) + 30, y2 + 90))
         rects.append((left + w - 420, top + h - 170, left + w, top + h))
@@ -94,6 +95,24 @@ class Watcher:
     def _grab(sct, left, top, w, h):
         raw = sct.grab({"left": int(left), "top": int(top), "width": int(w), "height": int(h)})
         return Image.frombytes("RGB", raw.size, raw.bgra, "raw", "BGRX").convert("L")
+
+    def look(self):
+        """A thumbnail of the whole screen right now, for a quick before/after check of a
+        step (free: nothing leaves the PC). Eris's own windows are blanked, and her box
+        too if screenshots can see it. None if the screen can't be read."""
+        mon = self.eris.mon
+        if not mon:
+            return None
+        try:
+            with screen.new_sct() as sct:
+                img = self._grab(sct, *mon)
+        except Exception:
+            return None
+        arr = np.asarray(img.resize((TW, TH), Image.BILINEAR), dtype=np.int16).copy()
+        box_seen = getattr(self.eris.ui, "box_in_screenshots", lambda: True)()
+        for a, b, c, d in self._masks(mon, box=box_seen):
+            arr[b:d, a:c] = 0
+        return arr
 
     def _thumb(self, img, mon):
         arr = np.asarray(img.resize((TW, TH), Image.BILINEAR), dtype=np.int16).copy()
@@ -179,10 +198,10 @@ class Watcher:
             if self.base is None:
                 self.base = self.prev = frame
                 return False
-            changed = gone or _diff(frame, self.base) > CHANGED
-            still = _diff(frame, self.prev) <= STILL
+            different = gone or changed(frame, self.base) > CHANGED
+            still = changed(frame, self.prev) <= STILL
             self.prev = frame
-            if changed and self.changed_at is None:
+            if different and self.changed_at is None:
                 self.changed_at = now
             if not still:
                 self.still_since = None

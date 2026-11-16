@@ -82,6 +82,71 @@ def test_box_knows_what_it_points_at():
     check("...and a text box is a text box", wait_for(lambda: any(c[0] == "box" and c[-1] == "text box" for c in ui.cmds)))
 
 
+def test_recipes():
+    from eris import recipes
+    recipes.forget()
+    shot = fake_shot()
+    shot.app = {"name": "Unity", "title": "MyGame - Unity", "hwnd": 1}
+    e, _, _ = make_eris(shot)
+    e.brain.script = ["ELEMENT 1\nSAY Click Player in the Hierarchy.\nWAIT click",
+                      "BOX 10 10 50 30\nWHAT the Add Component button\nSAY Click Add Component.\nWAIT click",
+                      "BOX 10 10 50 30\nTYPE rigidbody\nSAY Type rigidbody.\nWAIT next",
+                      "NOBOX\nSAY Done, it has a Rigidbody now!\nDONE"]
+    shot.elements = [{"type": 50000, "name": "Player", "rect": (20, 20, 120, 40)}]
+    e.ask("how do I add a rigidbody to my player")
+    for _ in range(3):
+        wait_for(lambda: e.waiting is not None)
+        e.advance()
+        time.sleep(0.15)
+    wait_for(lambda: e.task is None)
+    saved = recipes.load()
+    check("a finished task is kept as a recipe", len(saved) == 1 and len(saved[0]["steps"]) == 3
+          and "Add Component" in saved[0]["steps"][1] and "type rigidbody" in saved[0]["steps"][2], saved)
+    e.brain.script = ["NOBOX\nSAY Sure.\nDONE"]
+    e.ask("add a rigidbody to the player please")
+    check("a similar request gets the steps that worked", wait_for(lambda: len(e.brain.notes) >= 5)
+          and "these steps worked" in e.brain.notes[-1] and "Add Component" in e.brain.notes[-1])
+    e.brain.script = ["NOBOX\nSAY Sure.\nDONE"]
+    e.ask("make the camera follow the player")
+    check("...but not a different one", wait_for(lambda: len(e.brain.notes) >= 6) and "worked" not in e.brain.notes[-1])
+    recipes.forget()
+    e.brain.script = ["BOX 10 10 50 30\nSAY Click this.\nWAIT click", "BOX 60 60 90 90\nSAY Sorry, this.\nWAIT click",
+                      "BOX 10 10 50 30\nSAY Now this.\nWAIT click", "NOBOX\nSAY Done.\nDONE"]
+    e.ask("open the lighting settings")
+    wait_for(lambda: e.waiting == "click")
+    e.wrong_box()
+    for _ in range(2):
+        wait_for(lambda: e.waiting is not None and not e.busy)
+        e.advance()
+        time.sleep(0.15)
+    wait_for(lambda: e.task is None)
+    check("a task where you pressed Wrong box isn't kept", not recipes.load())
+
+
+def test_checking_a_step():
+    import numpy as np
+    e, ui, _ = make_eris()
+    screens = {"now": np.zeros((180, 320), dtype=np.int16)}
+    e.watcher.look = lambda: screens["now"].copy()
+    e.brain.script = ["BOX 100 100 200 130\nSAY Click it.\nWAIT click",
+                      "BOX 300 300 400 330\nSAY Next, this.\nWAIT click",
+                      "NOBOX\nSAY Done.\nDONE"]
+    e.ask("go")
+    wait_for(lambda: e.waiting == "click" and e.check is not None)
+    e.on_click(300, 230, None, True)                 # a click that changes nothing
+    check("a click that changed nothing: the box comes back, no AI needed",
+          wait_for(lambda: any("another click" in l[1] for l in ui.logs if l[0] == "eris"), 4)
+          and e.box == (200, 200, 400, 260) and e.waiting == "click" and len(e.brain.asked) == 1)
+    e.on_click(300, 230, None, True)                 # still nothing: now she looks properly
+    check("...a second time, she looks, told nothing changed",
+          wait_for(lambda: len(e.brain.asked) == 2, 4) and "nothing on the screen changed" in e.brain.notes[-1])
+    wait_for(lambda: e.waiting == "click" and e.check is not None)
+    screens["now"] = np.full((180, 320), 200, dtype=np.int16)     # the click opened something big
+    e.on_click(700, 630, None, True)
+    check("a click that changed a lot: she's told so", wait_for(lambda: len(e.brain.asked) == 3, 3)
+          and "a lot of the screen changed" in e.brain.notes[-1])
+
+
 def test_wrong_box():
     from PIL import Image
     from eris import settings

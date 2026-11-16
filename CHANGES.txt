@@ -1,3 +1,4 @@
+v1.20.0: Smarter Eris. She keeps the steps of tasks that went well as recipes and follows them next time; she checks each step right after your click (no AI needed if nothing happened); and she knows her way around Unity, Blender, VS Code, browsers, File Explorer and Windows Settings.
 v1.19.5: What to type now sits in the empty right end of the box (or beside it) instead of covering what's underneath. The status chip no longer gets cut off in a narrow window, and the subtitle is just the brain's name.
 v1.19.4: The drag line no longer runs through its little ring.
 v1.19.3: Drag lines: the little box near the arrow is gone, and the third design is new (a sharp peak, a notched raised stretch, ticks, a diamond and chevrons).

@@ -37,6 +37,14 @@ After that, just open **Eris** from the Desktop. No command window.
   (*press Ctrl + S*). When what you need is further down, an arrow at the edge of the window shows
   which way to scroll.
 - She looks at the screen your app is on, even when your mouse is over Eris on another screen.
+- **She learns your tasks.** When a task goes well, she keeps its steps as a recipe. Ask for
+  something similar in the same app later and she follows the steps that worked, still checking
+  the screen at every step.
+- **She checks each step.** Right after you click her box she takes a quick free look: if
+  nothing changed she puts the box back and asks for another click, and otherwise she knows
+  whether a new window opened or the page changed before she looks again.
+- **She knows her way around** Unity, Blender, VS Code, browsers, File Explorer and Windows
+  Settings (menu paths, panels and shortcuts), so even the Free brain gets those right.
 - When you need to type something, she shows exactly what to type inside the box.
 - **Next step / F9** is for steps that aren't a click (typing, dragging).
 - **Stop / F10** clears everything. **New task** makes her forget the last task.
@@ -64,6 +72,8 @@ After that, just open **Eris** from the Desktop. No command window.
 - *Wrong box* keeps that screenshot (private boxes already blacked out) in the `mistakes`
   folder next to the log, on your PC only, so her real mistakes can become tests. The newest
   30 are kept. Delete the folder any time.
+- Recipes (the steps of tasks that went well) are kept in `recipes.json` next to the log, on your
+  PC only. *Forget everything* (Settings, then Eris) clears them too.
 
 Detection uses Windows' accessibility info (the same info screen readers use). Apps that draw their
 own password boxes can't be detected, so use the blocklist or the Active switch for those.
@@ -186,6 +196,8 @@ If it can't connect, Eris switches to the built-in Windows voice by herself. Use
 - `eris/uia.py`: asks Windows for exact element rectangles
 - `eris/watcher.py`: notices when your screen changes while she's waiting
 - `eris/tracker.py`: keeps the box on its button when you scroll or move a window
+- `eris/recipes.py`: remembers the steps of tasks that went well
+- `eris/knowledge.py`: a little know-how about popular apps
 - `eris/glitch.py`: the Neon look's drifting, glitching banner
 - `eris/hud.py`: the Neon HUD box shapes, drag connector and notes
 - `eris/overlay.py`: the red box (four solid bars plus the in-box type hint)

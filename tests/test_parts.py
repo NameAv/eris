@@ -145,6 +145,28 @@ def test_glitch_banner():
     check("the streaks wrap around seamlessly", np.abs(wrap[:, 0] - wrap[:, -1]).mean() < 25)
 
 
+def test_recipe_matching():
+    from eris import recipes
+    recipes.forget()
+    check("requests boil down to the words that matter",
+          recipes.words("How do I add a Rigidbody to my player?") == {"add", "rigidbody", "player"})
+    recipes.remember("add a rigidbody to my player", "Unity", ["Click Player", "Add Component", "Type rigidbody"])
+    check("found again by a similar request in the same app",
+          recipes.find("how do i add a rigidbody to the player", "Unity") is not None)
+    check("not in another app", recipes.find("add a rigidbody to my player", "Blender") is None)
+    check("not for a different request", recipes.find("add a box collider to the ground", "Unity") is None)
+    recipes.remember("add rigidbody to my player", "Unity", ["Click Player", "Add Component", "Type rigid", "Press Enter"])
+    check("the newer way replaces the old one", len(recipes.load()) == 1 and len(recipes.load()[0]["steps"]) == 4)
+    recipes.remember("hello", "Unity", ["one step"])
+    check("one-step tasks aren't kept", len(recipes.load()) == 1)
+    recipes.forget()
+    check("forget clears them", recipes.load() == [])
+    from eris import knowledge
+    check("app know-how only for the app in front",
+          "Add Component" in knowledge.notes("Unity") and "address bar" in knowledge.notes("Google Chrome")
+          and knowledge.notes("Notepad") == "")
+
+
 def test_elements_list():
     from eris import elements
     els = [{"type": 50005, "name": "Wikipedia", "rect": (200, 600, 380, 630)},

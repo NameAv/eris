@@ -77,7 +77,7 @@ class ScriptedBrain:
     """Plays back scripted replies, one list of events (or reply text) per turn."""
 
     def __init__(self, log=None):
-        self.script, self.asked, self.history = [], [], []
+        self.script, self.asked, self.history, self.notes = [], [], [], []
 
     def snap(self):
         return 1
@@ -91,8 +91,9 @@ class ScriptedBrain:
     def reset(self):
         self.history = []
 
-    def turn(self, shot, text, on_event, alive):
+    def turn(self, shot, text, on_event, alive, notes=""):
         self.asked.append(text)
+        self.notes.append(notes)
         step = self.script.pop(0) if self.script else []
         if isinstance(step, str):
             step = LineStream().feed(step + "\n")
@@ -127,6 +128,7 @@ def make_eris(shot=None):
     core.privacy.should_look_away = lambda: ""
     the_shot = shot or fake_shot()
     core.Eris._shoot = lambda self: the_shot
+    core.Watcher.look = lambda self: None          # no before/after check unless a test wants one
     core.config.SETTLE_DELAY = 0.05
     ui = FakeUI()
     e = core.Eris(ui)

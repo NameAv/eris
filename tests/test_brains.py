@@ -92,6 +92,10 @@ def test_app_and_elements_in_prompt():
     b.turn(shot, "go", lambda e: None, lambda: True)
     text = CAP["messages"][-1]["content"][1]["text"]
     check("the AI is told which app is in front", 'App in front: Google Chrome' in text)
+    check("...with a little know-how about it", "address bar" in text)
+    b.turn(shot, "go", lambda e: None, lambda: True, notes="These steps worked before: 1. Click it")
+    check("extra notes (a recipe, a quick check) reach the AI",
+          "These steps worked before" in CAP["messages"][-1]["content"][1]["text"])
     check("...and gets the numbered list", '[1] link "Wikipedia" at 109,328 to 207,344' in text)
     shot.monitor = (0, 0, 2560, 1440)
     b.turn(shot, "go", lambda e: None, lambda: True)

@@ -49,7 +49,7 @@ config.THEME = os.environ.get("ERIS_THEME", "crimson")     # run_all tries every
 REPLIES = []
 
 
-def scripted_turn(self, shot, text, on_event, alive):
+def scripted_turn(self, shot, text, on_event, alive, notes=""):
     reply = REPLIES.pop(0) if REPLIES else "NOBOX\nSAY Okay.\nDONE"
     for ev in LineStream().feed((reply(shot) if callable(reply) else reply) + "\n"):
         on_event(ev)

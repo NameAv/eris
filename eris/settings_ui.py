@@ -503,6 +503,12 @@ class SettingsWindow(ctk.CTkToplevel):
                     "box exactly onto the thing to click. Uses a little more AI.", "REFINE")
         self.switch(c, "Watch what I do", "She notices when your screen changes and carries on from there.",
                     "WATCH")
+        self.switch(c, "Box follows what it points at", "Scroll or move the window and the box "
+                    "slides along with its button, without asking the AI again. Uses almost nothing.",
+                    "TRACK")
+        self.switch(c, "Show the box in recordings", "Lets screen recordings and screen shares see "
+                    "the box. Off is best: she then never sees her own box in her screenshots.",
+                    "BOX_IN_RECORDINGS")
         right = self.row(c, "Box hides itself after")
         lbl = ctk.CTkLabel(right, text="", font=font(12), text_color=T.MUTED, width=40)
         sl = ctk.CTkSlider(right, from_=5, to=60, number_of_steps=11, width=200, button_color=T.ACCENT,

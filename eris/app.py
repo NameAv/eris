@@ -130,6 +130,11 @@ class App(ctk.CTk):
     def log(self, who, text):
         self.q.put(("log", (who, text)))
 
+    def box_in_screenshots(self):
+        """True if screenshots can see the red box and its type hint (older Windows, or
+        you chose to show the box in recordings)."""
+        return not getattr(getattr(self, "overlay", None), "hidden_from_capture", False)
+
     def window_rects(self):
         """Screen rects of Eris's own windows (the watcher ignores them)."""
         return self._rects
@@ -582,6 +587,8 @@ class App(ctk.CTk):
     def on_settings_changed(self, keys):
         """Apply a setting the moment it changes (the settings window saves instantly)."""
         keys = set(keys)
+        if "BOX_IN_RECORDINGS" in keys:
+            self.overlay.apply_capture()
         if "PANEL_ON_TOP" in keys:
             self.attributes("-topmost", bool(config.PANEL_ON_TOP))
         if keys & {"TALK_KEY", "NEXT_KEY", "CANCEL_KEY"}:

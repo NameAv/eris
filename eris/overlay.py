@@ -44,6 +44,20 @@ def _click_through(win):
     return list(handles)
 
 
+def _hide_from_capture(handles, hidden):
+    """Keep windows out of every screenshot and recording (Windows 10 2004 and later), so
+    her own screenshots and the box tracker never see the box. True if Windows agreed."""
+    if sys.platform != "win32" or not handles:
+        return False
+    import ctypes
+    from ctypes import wintypes
+    u32 = ctypes.windll.user32
+    WDA_NONE, WDA_EXCLUDEFROMCAPTURE = 0x0, 0x11
+    took = [bool(u32.SetWindowDisplayAffinity(wintypes.HWND(h), WDA_EXCLUDEFROMCAPTURE if hidden else WDA_NONE))
+            for h in handles]
+    return hidden and any(took)
+
+
 def _raise(win, handles):
     """Bring a piece to the very top WITHOUT taking keyboard focus from your app."""
     if sys.platform != "win32" or not handles:
@@ -98,7 +112,16 @@ class Overlay:
                 self.glow = GlowBox(master)
             except Exception:
                 self.glow = None   # plain bars instead
+        self.hidden_from_capture = False
+        self.apply_capture()
         master.after(1500, self._keep_on_top)
+
+    def apply_capture(self):
+        """Hide the box from screenshots, unless you want it in your recordings."""
+        groups = [self.handles.get(p) for p in self.pieces] + ([[self.glow.hwnd]] if self.glow else [])
+        hide = not config.BOX_IN_RECORDINGS
+        results = [_hide_from_capture(h, hide) for h in groups if h]
+        self.hidden_from_capture = bool(results) and all(results)
 
     def _keep_on_top(self):
         if self.glow and self.rect:

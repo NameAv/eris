@@ -289,7 +289,9 @@ def extras_on_screen():
     ov = app.overlay
     placed, real = {}, ov._place
     ov._place = lambda win, x, y, w, h: (placed.__setitem__(win, (x, y)), real(win, x, y, w, h))
+    first = ov.variant
     ov.box(600, 200, 800, 240)
+    check("each new box takes the next version of its shape", ov.variant == (first + 1) % 3)
     ov.drop(900, 500, 1100, 540)
     check("a drag shows the drop box", ov.drop_rect == (900, 500, 1100, 540)
           and placed.get(ov.drop_bars[0]) == (897, 497))

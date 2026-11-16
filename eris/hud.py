@@ -100,51 +100,110 @@ def _cut(x1, y1, x2, y2, c):
 
 
 # ---------------- the box ----------------
-def _ring(cv, x1, y1, x2, y2, red, alpha):
+def _ring(cv, x1, y1, x2, y2, red, alpha, v=0):
     cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
     r = max(x2 - x1, y2 - y1) / 2 + 3
-    cv.arc(cx, cy, r, 0, 360, red + (alpha,), 2.5)
-    cv.arc(cx, cy, r + 4, 0, 360, red + (alpha // 3,), 1)
-    for start in (-60, 30, 120, 210):                     # four bright tick arcs
-        cv.arc(cx, cy, r + 4, start, start + 30, red + (alpha,), 3)
+    col, dim = red + (alpha,), red + (alpha // 3,)
+    if v == 1:                                            # two long arcs, like the close button
+        cv.arc(cx, cy, r, 0, 360, col, 2)
+        for start in (200, 20):
+            cv.arc(cx, cy, r + 2.5, start, start + 100, col, 2)
+    elif v == 2:                                          # notched ring with little spokes
+        for start in (10, 100, 190, 280):
+            cv.arc(cx, cy, r, start, start + 70, col, 2.5)
+        for k in range(8):
+            a = math.radians(k * 45 + 22.5)
+            cv.line([(cx + math.cos(a) * (r + 2), cy + math.sin(a) * (r + 2)),
+                     (cx + math.cos(a) * (r + 5), cy + math.sin(a) * (r + 5))], col, 1.5)
+    else:                                                 # ring, faint halo, four tick arcs
+        cv.arc(cx, cy, r, 0, 360, col, 2.5)
+        cv.arc(cx, cy, r + 4, 0, 360, dim, 1)
+        for start in (-60, 30, 120, 210):
+            cv.arc(cx, cy, r + 4, start, start + 30, col, 3)
 
 
-def _bar(cv, x1, y1, x2, y2, red, alpha):
+def _bar(cv, x1, y1, x2, y2, red, alpha, v=0):
     c = min(8, (y2 - y1) / 3)
-    cv.line(_cut(x1, y1, x2, y2, c), red + (alpha,), 2, closed=True)
+    col = red + (alpha,)
     acc = min(70, (x2 - x1) / 4)
-    cv.line([(x1 + c, y1 - 4), (x1 + c + acc, y1 - 4)], red + (alpha,), 3)          # top-left strip
-    cv.line([(x2 - c - acc, y2 + 4), (x2 - c, y2 + 4)], red + (alpha,), 3)          # bottom-right strip
-    for x in (x1 - 5, x2 + 5):                                                       # end brackets
-        cv.line([(x, y1 + 3), (x, y2 - 3)], red + (alpha,), 3)
+    cv.line(_cut(x1, y1, x2, y2, c), col, 2, closed=True)
+    if v == 1:                                            # a step on top, a long strip underneath
+        cv.line([(x1 + c, y1 - 4), (x1 + c + acc * 0.6, y1 - 4), (x1 + c + acc * 0.6 + 4, y1 - 8),
+                 (x1 + c + acc * 1.4, y1 - 8)], col, 2)
+        cv.line([(x1 + (x2 - x1) * 0.25, y2 + 4), (x2 - c, y2 + 4)], red + (alpha // 2,), 2)
+        cv.line([(x2 + 5, y1 + 3), (x2 + 5, y2 - 3)], col, 3)
+    elif v == 2:                                          # nodes at the ends, a tab in the middle
+        for x in (x1 - 6, x2 + 2):
+            cv.poly([(x, y1 + (y2 - y1) / 2 - 2), (x + 4, y1 + (y2 - y1) / 2 - 2),
+                     (x + 4, y1 + (y2 - y1) / 2 + 2), (x, y1 + (y2 - y1) / 2 + 2)], col)
+        mx = (x1 + x2) / 2
+        cv.poly([(mx - acc / 2, y2), (mx - acc / 2 + 4, y2 + 4), (mx + acc / 2 - 4, y2 + 4), (mx + acc / 2, y2)], col)
+        cv.line([(x2 - c - acc, y1 - 4), (x2 - c, y1 - 4)], col, 2)
+    else:                                                 # strips at two corners, end brackets
+        cv.line([(x1 + c, y1 - 4), (x1 + c + acc, y1 - 4)], col, 3)
+        cv.line([(x2 - c - acc, y2 + 4), (x2 - c, y2 + 4)], col, 3)
+        for x in (x1 - 5, x2 + 5):
+            cv.line([(x, y1 + 3), (x, y2 - 3)], col, 3)
 
 
-def _frame(cv, x1, y1, x2, y2, red, alpha):
+def _frame(cv, x1, y1, x2, y2, red, alpha, v=0):
     c = max(4, min(10, (x2 - x1) / 6, (y2 - y1) / 3))
-    cv.line(_cut(x1, y1, x2, y2, c), red + (alpha,), 2.5, closed=True)
-    w = x2 - x1
-    tx1, tx2 = x1 + w * 0.3, x1 + w * 0.7                                            # the top tab
-    cv.poly([(tx1, y1), (tx1 + 5, y1 - 5), (tx2 - 5, y1 - 5), (tx2, y1)], red + (alpha,))
-    for i in range(3):                                                               # slashes, top right
-        sx = x2 - 14 - i * 6
-        if sx > tx2 + 4:
-            cv.line([(sx, y1 - 2), (sx + 4, y1 - 7)], red + (alpha,), 1.5)
-    cv.line([(x1 + w * 0.4, y2 + 4), (x1 + w * 0.6, y2 + 4)], red + (alpha // 2,), 2)  # underline
+    col = red + (alpha,)
+    w, h = x2 - x1, y2 - y1
+    cv.line(_cut(x1, y1, x2, y2, c), col, 2.5, closed=True)
+    if v == 1:                                            # a tab underneath, brackets on the sides
+        bx1, bx2 = x1 + w * 0.3, x1 + w * 0.7
+        cv.poly([(bx1, y2), (bx1 + 5, y2 + 5), (bx2 - 5, y2 + 5), (bx2, y2)], col)
+        for x in (x1 - 5, x2 + 5):
+            cv.line([(x, y1 + h * 0.25), (x, y2 - h * 0.25)], col, 2.5)
+        cv.line([(x1 + c, y1 - 4), (x1 + c + min(30, w / 5), y1 - 4)], red + (alpha // 2,), 2)
+    elif v == 2:                                          # doubled corners and slashes
+        d = 4
+        cv.line([(x2 - 18, y1 - d), (x2 + d, y1 - d), (x2 + d, y1 + 10)], col, 2)
+        cv.line([(x1 + 18, y2 + d), (x1 - d, y2 + d), (x1 - d, y2 - 10)], col, 2)
+        for i in range(3):
+            sx = x1 + c + 6 + i * 6
+            cv.line([(sx, y1 - 2), (sx + 4, y1 - 7)], col, 1.5)
+    else:                                                 # a tab on top, slashes, underline
+        tx1, tx2 = x1 + w * 0.3, x1 + w * 0.7
+        cv.poly([(tx1, y1), (tx1 + 5, y1 - 5), (tx2 - 5, y1 - 5), (tx2, y1)], col)
+        for i in range(3):
+            sx = x2 - 14 - i * 6
+            if sx > tx2 + 4:
+                cv.line([(sx, y1 - 2), (sx + 4, y1 - 7)], col, 1.5)
+        cv.line([(x1 + w * 0.4, y2 + 4), (x1 + w * 0.6, y2 + 4)], red + (alpha // 2,), 2)
 
 
-def _panel(cv, x1, y1, x2, y2, red, alpha):
-    cv.line(_cut(x1, y1, x2, y2, 12), red + (alpha // 2,), 1.2, closed=True)
-    arm = min(46, (x2 - x1) / 5, (y2 - y1) / 5)
+def _panel(cv, x1, y1, x2, y2, red, alpha, v=0):
+    col = red + (alpha,)
+    w, h = x2 - x1, y2 - y1
     o = 2
-    for (cx, cy, dx, dy) in ((x1 - o, y1 - o, 1, 1), (x2 + o, y1 - o, -1, 1),
-                             (x1 - o, y2 + o, 1, -1), (x2 + o, y2 + o, -1, -1)):     # corner brackets
-        cv.line([(cx + dx * arm, cy), (cx, cy), (cx, cy + dy * arm)], red + (alpha,), 3.5)
-    mid, side = (y1 + y2) / 2, min(40, (y2 - y1) / 6)
-    for x in (x1 - 5, x2 + 5):                                                       # side tabs
-        cv.line([(x, mid - side), (x, mid + side)], red + (alpha,), 4)
-    w = x2 - x1                                                                      # header tab
-    hx1, hx2 = x1 + w * 0.35, x1 + w * 0.65
-    cv.poly([(hx1, y1 - o), (hx1 + 6, y1 - o - 5), (hx2 - 6, y1 - o - 5), (hx2, y1 - o)], red + (alpha,))
+    arm = min(46, w / 5, h / 5)
+    cv.line(_cut(x1, y1, x2, y2, 12), red + (alpha // 2,), 1.2, closed=True)
+    if v != 1:                                            # corner brackets
+        for (cx, cy, dx, dy) in ((x1 - o, y1 - o, 1, 1), (x2 + o, y1 - o, -1, 1),
+                                 (x1 - o, y2 + o, 1, -1), (x2 + o, y2 + o, -1, -1)):
+            cv.line([(cx + dx * arm, cy), (cx, cy), (cx, cy + dy * arm)], col, 3.5)
+    mid, side = (y1 + y2) / 2, min(40, h / 6)
+    if v == 1:                                            # header and footer tabs, a second outline
+        cv.line(_cut(x1 - 3, y1 - 3, x2 + 3, y2 + 3, 14), col, 1.5, closed=True)
+        for y, d in ((y1 - 3, -1), (y2 + 3, 1)):
+            hx1, hx2 = x1 + w * 0.35, x1 + w * 0.65
+            cv.poly([(hx1, y), (hx1 + 5, y + d * 4), (hx2 - 5, y + d * 4), (hx2, y)], col)
+    elif v == 2:                                          # double side tabs and corner nodes
+        for x in (x1 - 5, x2 + 5):
+            for off in (-side * 0.6, side * 0.6):
+                cv.line([(x, mid + off - side * 0.3), (x, mid + off + side * 0.3)], col, 3)
+        for cx, cy in ((x1 + arm + 6, y1 - o), (x2 - arm - 6, y2 + o)):
+            cv.poly([(cx - 3, cy - 3), (cx + 3, cy - 3), (cx + 3, cy + 3), (cx - 3, cy + 3)], col)
+    else:                                                 # side tabs and a header tab
+        for x in (x1 - 5, x2 + 5):
+            cv.line([(x, mid - side), (x, mid + side)], col, 4)
+        hx1, hx2 = x1 + w * 0.35, x1 + w * 0.65
+        cv.poly([(hx1, y1 - o), (hx1 + 6, y1 - o - 5), (hx2 - 6, y1 - o - 5), (hx2, y1 - o)], col)
+
+
+VARIANTS = 3
 
 
 SHAPES = {"ring": _ring, "bar": _bar, "frame": _frame, "panel": _panel}
@@ -193,7 +252,7 @@ def label(text, size=17, prefix=None, arrow=None):
     return cv.finish()
 
 
-def box(w, h, hint="", grow=0, glow_margin=16, kind=None):
+def box(w, h, hint="", grow=0, glow_margin=16, kind=None, variant=0):
     """The HUD box for a w x h target, laid out like glowbox.render (target at
     glow_margin, glow_margin). What to type hangs under it on a red plate."""
     red = _red()
@@ -203,7 +262,7 @@ def box(w, h, hint="", grow=0, glow_margin=16, kind=None):
     width = w + 2 * G if tag is None else max(w + 2 * G, G - 10 + tag.width)
     cv = _Canvas(width, h + 2 * G + (tag.height - 6 if tag else 0))
     x1, y1, x2, y2 = G - grow, G - grow, G + w + grow, G + h + grow
-    SHAPES[kind](cv, x1, y1, x2, y2, red, 255)
+    SHAPES[kind](cv, x1, y1, x2, y2, red, 255, variant % VARIANTS)
     img = cv.finish()
     if tag:
         img.alpha_composite(tag, (max(0, G - 10), G + h + 2))
@@ -211,53 +270,70 @@ def box(w, h, hint="", grow=0, glow_margin=16, kind=None):
 
 
 # ---------------- drag, notes ----------------
-DROP_FRAMES = 12         # the drag beam is animated: its streaks flow toward the target
-BEAM = 14                # how wide the beam of light streaks is, at most
-ROOM = 8                 # space each side of it, for glitches to jump into
+LINE_H = 26              # height of a connector strip (it lies along +x, centre line in the middle)
 
 
-def _beam(length, frame, glitch):
-    """A narrow strip of red light streaks (the banner's texture), `length` long, as
-    RGBA: the streaks flow forward, its width swells and thins along it and over time,
-    soft at the edges and not too bright; when glitching, a few chunks jump sideways and
-    small blocks flicker. Lies along +x (drop() turns it toward the target)."""
-    import random
-    import numpy as np
-    from . import theme
-    L = max(8, int(length))
-    tex = np.asarray(theme.streaks(L, BEAM, seed=11, density=3.4), dtype=np.float32)
-    tex = np.roll(tex, int(frame * L / DROP_FRAMES / 3) % L, axis=1)     # flowing toward the target
-    x = np.arange(L)
-    t = frame / DROP_FRAMES * 2 * np.pi
-    width = 0.62 + 0.22 * np.sin(x / 37.0 + t) + 0.14 * np.sin(x / 13.0 - 2 * t)  # breathing width
-    rows = np.abs(np.linspace(-1, 1, BEAM))[:, None]
-    across = np.clip(1 - rows / np.maximum(width, 0.15)[None, :], 0, 1) ** 0.8
-    along = np.clip(np.minimum(x, L - 1 - x) / 18.0, 0.3, 1)                    # soft ends
-    alpha = np.clip(tex.max(axis=2) * 2.4, 0, 235) * across * along[None, :]
-    mid = BEAM // 2                                                             # a faint core: the path
-    alpha[mid - 1:mid + 1] = np.maximum(alpha[mid - 1:mid + 1], 95 * along[None, :])
-    tex[mid - 1:mid + 1] = np.maximum(tex[mid - 1:mid + 1], [200, 30, 45])
-    H = BEAM + 2 * ROOM
-    rgba = np.zeros((H, L, 4), dtype=np.float32)
-    rgba[ROOM:ROOM + BEAM, :, :3] = np.clip(tex * 1.4, 0, 255)
-    rgba[ROOM:ROOM + BEAM, :, 3] = alpha
-    if glitch:
-        rnd = random.Random(frame * 37)
-        for _ in range(rnd.randint(2, 4)):                                 # a few chunks jump sideways
-            c1 = rnd.randrange(0, L)
-            c2 = min(L, c1 + rnd.randint(8, max(10, L // 8)))
-            rgba[:, c1:c2] = np.roll(rgba[:, c1:c2], rnd.randint(-ROOM + 2, ROOM - 2), axis=0)
-        for _ in range(rnd.randint(2, 5)):                                 # small blocks flicker
-            bx, by = rnd.randrange(0, L), rnd.randrange(0, H - 2)
-            rgba[by:by + 2, bx:bx + rnd.randint(4, 14)] = [255, 40, 60, 200]
-    return Image.fromarray(np.clip(rgba, 0, 255).astype(np.uint8), "RGBA")
+def _hatch(cv, x1, x2, y1, y2, col, gap=4):
+    """A block of slanted stripes //// between x1 and x2."""
+    x = x1
+    while x + (y2 - y1) < x2:
+        cv.line([(x, y2), (x + (y2 - y1), y1)], col, 1.2)
+        x += gap
 
 
-def drop(src, dst, frame=0):
-    """A drag: the drop target framed (shape to suit it), a DROP HERE tab beside it, and
-    a beam of red light streaks from what to drag to an arrowhead at the target, with a
-    DRAG tag at the start. The streaks flow toward the target; some frames glitch.
-    frame: 0..DROP_FRAMES-1 (cycle them). Returns (image, x, y)."""
+def _connector(length, variant):
+    """One of three HUD connector lines (thin lines, raised steps, hatching, ring nodes,
+    tapered bars), `length` long, along +x, as a glowing RGBA strip."""
+    L = max(40, int(length))
+    red = _red()
+    col = red + (255,)
+    cv = _Canvas(L, LINE_H)
+    c = LINE_H / 2
+    at = lambda f: L * f
+    size = lambda f, most: min(L * f, most)
+    if variant == 0:                      # stepped: a line, a raised hatched step, a node, a long bar
+        s1, s2 = at(0.12), at(0.12) + size(0.25, 120)
+        cv.line([(0, c), (s1, c), (s1 + 5, c - 5), (s2, c - 5), (s2 + 5, c)], col, 1.5)
+        _hatch(cv, s1 + 10, s2 - 6, c - 4, c, col)
+        n = max(s2 + 30, at(0.55))
+        cv.line([(s2 + 5, c), (n - 5, c)], col, 1.5)
+        cv.arc(n, c, 4, 0, 360, col, 1.5)
+        b1 = n + 14
+        cv.line([(n + 4, c), (b1, c)], col, 1.5)
+        if L - 6 > b1 + 20:
+            cv.poly([(b1, c - 1), (b1 + 5, c - 5), (L - 9, c - 5), (L - 4, c), (L - 9, c + 3), (b1, c + 3)], col)
+        else:
+            cv.line([(b1, c), (L, c)], col, 1.5)
+    elif variant == 1:                    # rails: two thin lines, a slanted block, slashes, a node
+        cv.line([(0, c - 1.5), (L, c - 1.5)], col, 1)
+        cv.line([(0, c + 2.5), (L, c + 2.5)], red + (150,), 1)
+        bw = size(0.2, 90)
+        cv.poly([(4, c - 9), (4 + bw, c - 9), (11 + bw, c - 2), (11, c - 2)], col)
+        h1 = 18 + bw
+        _hatch(cv, h1, h1 + size(0.12, 50), c - 7, c - 2.5, col)
+        n = max(h1 + size(0.12, 50) + 20, at(0.6))
+        if n < L - 20:
+            cv.arc(n, c - 1.5, 4, 0, 360, col, 1.5)
+        if L > 120:
+            cv.poly([(L - 30, c - 7), (L - 14, c - 7), (L - 14, c - 2), (L - 30, c - 2)], col)
+    else:                                 # ridged: a thick bar with bumps, thinning to a line
+        e = at(0.8)
+        pts = [(0, c + 3), (0, c - 2)]
+        for f in (0.25, 0.6):
+            x = at(f)
+            pts += [(x - 11, c - 2), (x - 5, c - 8), (x + 7, c - 8), (x + 13, c - 2)]
+        pts += [(e - 8, c - 2), (e, c + 3)]
+        cv.poly(pts, col)
+        cv.line([(e, c + 1.5), (L, c + 1.5)], col, 1.5)
+        cv.poly([(at(0.42), c + 3), (at(0.42) + 8, c + 7), (at(0.42) + 34, c + 7), (at(0.42) + 40, c + 3)], col)
+    return cv.finish()
+
+
+def drop(src, dst, variant=1):
+    """A drag: the drop target framed (shape to suit it), a DROP HERE tab beside it, a
+    DRAG tag at the start, and a HUD connector line from what to drag to an arrowhead at
+    the target. variant: which version of the target's shape and of the line (3 each).
+    Returns (image, x, y)."""
     red = _red()
     pad = 44
     label_w = _Canvas(1, 1).text_width("DROP HERE", 12) + 70
@@ -267,8 +343,7 @@ def drop(src, dst, frame=0):
     cv = _Canvas(x1 - x0, y1 - y0)
     s = [v - o for v, o in zip(src, (x0, y0, x0, y0))]
     d = [v - o for v, o in zip(dst, (x0, y0, x0, y0))]
-    SHAPES[shape_for(d[2] - d[0], d[3] - d[1])](cv, *d, red, 230)
-    glitch = frame in (3, 4, 9) and config.GLITCH
+    SHAPES[shape_for(d[2] - d[0], d[3] - d[1])](cv, *d, red, 230, variant % VARIANTS)
     a = _edge(s, ((d[0] + d[2]) / 2, (d[1] + d[3]) / 2))
     b = _edge(d, ((s[0] + s[2]) / 2, (s[1] + s[3]) / 2))
     length = math.hypot(b[0] - a[0], b[1] - a[1])
@@ -284,8 +359,11 @@ def drop(src, dst, frame=0):
                 red + (255,))                                          # a node where it starts
         lx, ly = s[2] + 8, s[1] - 22 if s[1] > 30 else s[3] + 6         # the DRAG tag
         _plate(cv, lx, ly, "DRAG", 10, red)
-        run = length - 20                                              # the beam: start to arrowhead
-        strip = _beam(run, frame, glitch).rotate(-math.degrees(math.atan2(uy, ux)), Image.BICUBIC, expand=True)
+        run = length - 20                                              # the line: start to arrowhead
+        strip = _connector(run, variant % VARIANTS)
+        if ux < 0:                         # pointing left: keep its bumps on the upper side
+            strip = strip.transpose(Image.FLIP_TOP_BOTTOM)
+        strip = strip.rotate(-math.degrees(math.atan2(uy, ux)), Image.BICUBIC, expand=True)
         mx, my = a[0] + ux * run / 2, a[1] + uy * run / 2
         beam = (strip, int(mx - strip.width / 2), int(my - strip.height / 2))
     tx, ty = d[2] + 10, (d[1] + d[3]) / 2 - 12                          # DROP HERE, beside the target

@@ -28,13 +28,13 @@ def _rgb(hexcol):
     return tuple(int(hexcol[i:i + 2], 16) for i in (1, 3, 5))
 
 
-def render(w, h, hint="", grow=0, style=None, kind=None):
+def render(w, h, hint="", grow=0, style=None, kind=None, variant=0):
     """RGBA image of the box for a w x h target, with the glow around it.
     grow: draw the box this many px bigger (for the pop-in). style "neon": the HUD
     box (hud.py), whose shape suits the target; otherwise the rounded glowing box."""
     if (style or config.BOX_STYLE) == "neon":
         from . import hud
-        return hud.box(w, h, hint, grow, GLOW, kind)
+        return hud.box(w, h, hint, grow, GLOW, kind, variant)
     red = _rgb(config.BOX_COLOR)
     W, H = w + 2 * GLOW, h + 2 * GLOW
     radius = max(4, min(10, min(w, h) // 3))
@@ -101,12 +101,12 @@ def _edge_point(rect, toward):
     return cx + dx * t, cy + dy * t
 
 
-def render_drop(src, dst, frame=0):
+def render_drop(src, dst, variant=1):
     """A drag: a dashed box where to drop, and a glowing arrow from what to drag.
     Screen rects in; (RGBA image, x, y) out."""
     if config.BOX_STYLE == "neon":
         from . import hud
-        return hud.drop(src, dst, frame)
+        return hud.drop(src, dst, variant)
     red = _rgb(config.BOX_COLOR)
     pad = GLOW + 40
     x0, y0 = int(min(src[0], dst[0]) - pad), int(min(src[1], dst[1]) - pad)
@@ -241,7 +241,7 @@ class GlowBox:
         # layered + click-through + never takes focus + not in the taskbar
         ex = u32.GetWindowLongW(self.hwnd, -20)
         u32.SetWindowLongW(self.hwnd, -20, ex | 0x80000 | 0x20 | 0x80 | 0x8000000 | 0x8)
-        self.rect, self.hint, self.alpha, self.kind = None, "", 255, None
+        self.rect, self.hint, self.alpha, self.kind, self.variant = None, "", 255, None, 0
         self.jobs = []
         self.shown_at = 0.0
         if not self._show_image(Image.new("RGBA", (2, 2), (0, 0, 0, 0)), -32000, -32000):
@@ -278,7 +278,7 @@ class GlowBox:
 
     def _draw(self, grow=0, alpha=255):
         x1, y1, x2, y2 = self.rect
-        img = render(x2 - x1, y2 - y1, self.hint, grow, kind=self.kind)
+        img = render(x2 - x1, y2 - y1, self.hint, grow, kind=self.kind, variant=self.variant)
         self._show_image(img, x1 - GLOW, y1 - GLOW, alpha)
         self.alpha = alpha
 
@@ -288,11 +288,11 @@ class GlowBox:
         self.jobs = []
 
     # ---- public ----
-    def show(self, rect, hint="", kind=None):
+    def show(self, rect, hint="", kind=None, variant=0):
         """Pop in: starts a little bigger and transparent, settles onto the target.
         kind: what it is ("button", "text box"...), for the HUD box's shape."""
         self._cancel()
-        self.rect, self.hint, self.kind = tuple(int(v) for v in rect), hint, kind
+        self.rect, self.hint, self.kind, self.variant = tuple(int(v) for v in rect), hint, kind, variant
         self.shown_at = time.time()
         frames = [(10, 90), (6, 160), (3, 220), (1, 250), (0, 255)]
         for i, (grow, alpha) in enumerate(frames):
@@ -315,23 +315,6 @@ class GlowBox:
         self._cancel()
         self.rect = None
         self._show_image(img, x, y)
-
-    def show_frames(self, make, count, x, y, ms=90):
-        """Loop an animation at a spot on screen. make(i) draws frame i; each frame is
-        drawn the first time it's needed and reused after that."""
-        self._cancel()
-        self.rect = None
-        cache = {}
-
-        def step(i):
-            try:
-                if i not in cache:
-                    cache[i] = make(i)
-                self._show_image(cache[i], x, y)
-            except Exception:
-                return
-            self.jobs = [self.master.after(ms, lambda: step((i + 1) % count))]
-        step(0)
 
     def hide(self):
         self._cancel()

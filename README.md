@@ -48,8 +48,9 @@ After that, just open **Eris** from the Desktop. No command window.
   (Settings, then Guiding) whose shape suits what it points at: a ring for small icons and
   buttons, a slim bar for search bars, fields and list rows, a frame with a tab for ordinary
   buttons, corner brackets for big things. Every label (what to type, *drag*, *drop here*,
-  shortcuts, scrolling) is the same solid red plate, and drags get a narrow beam of flowing red
-  light streaks to an arrowhead that glitches now and then.
+  shortcuts, scrolling) is the same solid red plate, and drags get a HUD connector line to an
+  arrowhead (three designs). Each new box takes the next of three versions of its shape, so
+  several boxes never look quite the same.
 
 ## Privacy
 

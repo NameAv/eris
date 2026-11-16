@@ -101,6 +101,7 @@ class Overlay:
         self.note_label.pack()
         self.drop_rect = None
         self.extras_timer = None
+        self.variant = -1            # each new box gets the next version of its HUD shape
         self.pieces = self.bars + [self.cap, self.pill] + self.drop_bars + [self.note]
         master.update_idletasks()
         self.handles = {}
@@ -169,8 +170,9 @@ class Overlay:
         points at ("button", "text box"...), when known: the HUD box's shape suits it."""
         self.clear_box()
         self.rect = (int(x1), int(y1), int(x2), int(y2))
+        self.variant = (self.variant + 1) % 3
         if self.glow:
-            self.glow.show(self.rect, caption, kind)
+            self.glow.show(self.rect, caption, kind, self.variant)
             _raise(self.glow.win, [self.glow.hwnd])
         else:
             self._draw_bars()
@@ -206,14 +208,8 @@ class Overlay:
         self.drop_rect = (int(x1), int(y1), int(x2), int(y2))
         if self.extra:
             from .glowbox import render_drop
-            src, dst = self.rect, self.drop_rect
-            img, x, y = render_drop(src, dst)
-            if config.BOX_STYLE == "neon":     # the HUD connector is animated
-                from .hud import DROP_FRAMES
-                self.extra.show_frames(lambda i: img if i == 0 else render_drop(src, dst, i)[0], DROP_FRAMES, x, y,
-                                       ms=70)
-            else:
-                self.extra.show_picture(img, x, y)
+            img, x, y = render_drop(self.rect, self.drop_rect, self.variant + 1)   # the target: another version
+            self.extra.show_picture(img, x, y)
             return
         t = max(2, config.BOX_WIDTH - 1)
         a, b, c, d = self.drop_rect

@@ -10,6 +10,7 @@ import asyncio
 import os
 import random
 import queue
+import re
 import sys
 import tempfile
 import threading
@@ -28,6 +29,26 @@ VOICES = {  # label in settings -> edge-tts voice name
 }
 ACKS = ["Mm-hm.", "On it.", "Okay, let me look.", "Sure thing.", "One sec."]
 PREVIEW = "Hi, I'm Eris. Ask me anything, and I'll show you exactly where to click."
+
+
+def pieces(text, shortest=25, split_over=60):
+    """A long line split at its commas (and ; : dashes) into pieces of a sensible size: the
+    online voice makes a whole piece before any of it plays, so the first piece of a long
+    line can start playing while the rest are still being made."""
+    if len(text) <= split_over:
+        return [text]
+    out, piece = [], ""
+    for part in re.split(r"(?<=[,;:\u2013\u2014])\s+", text):
+        piece = f"{piece} {part}".strip()
+        if len(piece) >= shortest:
+            out.append(piece)
+            piece = ""
+    if piece:                     # a short tail joins the last piece
+        if out:
+            out[-1] += " " + piece
+        else:
+            out.append(piece)
+    return out
 
 
 class _Clip:
@@ -72,9 +93,10 @@ class Voice:
         if self._first is None or self._first[0] != self.gen:
             self._first = (self.gen, time.time())
         if self._natural():
-            clip = _Clip(self.gen, text, voice=voice)
-            self.audio_q.put(clip)
-            threading.Thread(target=self._make, args=(clip,), daemon=True).start()
+            for piece in pieces(text):        # long lines start sooner in pieces
+                clip = _Clip(self.gen, piece, voice=voice)
+                self.audio_q.put(clip)
+                threading.Thread(target=self._make, args=(clip,), daemon=True).start()
         else:
             self.sapi_q.put(("say", text))
 

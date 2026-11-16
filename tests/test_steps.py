@@ -158,6 +158,28 @@ def test_learning_from_experience():
     recipes.forget()
 
 
+def test_waits_for_the_page_to_load():
+    import numpy as np
+    e, _, _ = make_eris()
+    frames = [0, 0, 60, 120, 180, 200, 200, 200, 200, 200]      # the click starts a page loading
+    calls = []
+
+    def look():
+        calls.append(1)
+        return np.full((180, 320), frames[min(len(calls) - 1, len(frames) - 1)], dtype=np.int16)
+    e.watcher.look = look
+    e.brain.script = ["BOX 100 100 200 130\nSAY Click Images.\nWAIT click", "NOBOX\nSAY Done.\nDONE"]
+    e.ask("show me images")
+    wait_for(lambda: e.waiting == "click" and e.check is not None)
+    asked_at = []
+    real_turn = e.brain.turn
+    e.brain.turn = lambda *a, **k: (asked_at.append(len(calls)), real_turn(*a, **k))
+    e.on_click(300, 230, None, True)
+    check("after a click she waits for the page to finish loading before looking",
+          wait_for(lambda: asked_at, 5) and asked_at[0] >= 6 and "a lot of the screen changed" in e.brain.notes[-1],
+          asked_at)
+
+
 def test_no_new_look_while_she_talks():
     e, _, _ = make_eris()
     e.waiting, e.mon = "next", (0, 0, 100, 100)

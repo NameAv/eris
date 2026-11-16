@@ -14,7 +14,7 @@ from . import apps, config, elements, experience, ocr, privacy, recipes, screen,
 from .brain import Brain, locate
 from .speech import Voice, beep
 from .tracker import Tracker
-from .watcher import Watcher, changed as screen_changed
+from .watcher import STILL as SCREEN_STILL, Watcher, changed as screen_changed
 
 WATCH_PROMPT = ("(Automatic look: my screen changed while you were waiting.) Here's my screen "
                 "now. If the step is done, give the next step, or DONE if the task is finished. "
@@ -166,15 +166,12 @@ class Eris:
         time.sleep(config.SETTLE_DELAY)   # let menus/panels open first
         if my != self.gen:
             return
-        seen = self._what_changed(ref) if ref else ""
-        if seen == "nothing" and clicked:
-            time.sleep(1.0)                # a slow app: give it a moment more
-            if my != self.gen:
-                return
-            seen = self._what_changed(ref)
-            if seen == "nothing" and not self.retried and ref.get("box"):
-                self._click_again(my, ref)
-                return
+        seen = self._settle(my, ref) if ref else ""
+        if my != self.gen:
+            return
+        if seen == "nothing" and clicked and not self.retried and ref.get("box"):
+            self._click_again(my, ref)
+            return
         self.retried = False
         if seen:
             self.pending_note = ("(Quick check after that step: "
@@ -182,13 +179,33 @@ class Eris:
         self._turn_safe(my, NEXT_STEP_PROMPT)
 
     # ---------- checking a step, recipes ----------
-    def _what_changed(self, ref):
+    def _settle(self, my, ref, longest=3.0, give_up=1.5):
+        """Wait until your action has finished showing (a page loading, a menu opening):
+        until the screen has changed and stopped changing, up to `longest` seconds, or
+        `give_up` seconds of nothing changing at all. Looking any sooner would show her
+        the old screen, and she'd repeat herself. Returns what changed (_what_changed)."""
+        start, prev = time.time(), None
+        while True:
+            now = self.watcher.look()
+            seen = self._what_changed(ref, now)
+            waited = time.time() - start
+            if my != self.gen or now is None or not seen or waited >= longest:
+                return seen
+            if seen == "nothing":
+                if waited >= give_up:
+                    return seen
+            elif prev is not None and screen_changed(now, prev) <= SCREEN_STILL:
+                return seen                # changed, and settled
+            prev = now
+            time.sleep(0.25)
+
+    def _what_changed(self, ref, now=None):
         """What your last action changed, from a free before/after look: "nothing", a
         short description, or "" if it can't tell."""
         win, before = apps.front_window(), ref.get("win") or {}
         if win and before and win.get("hwnd") != before.get("hwnd"):
             return f'a different window is in front now: {win["name"]} ("{win["title"][:60]}")'
-        now = self.watcher.look()
+        now = self.watcher.look() if now is None else now
         if now is None or ref.get("thumb") is None:
             return ""
         part = screen_changed(now, ref["thumb"])

@@ -211,7 +211,7 @@ class Watcher:
             settle = 0.8 if self.eris.waiting == "click" else 1.4
             settled = (self.changed_at is not None and self.still_since is not None
                        and now - self.still_since >= settle)
-            patience = 8 * 2 ** min(self.keep_streak, 4)   # 8s, 16s, 32s... for busy screens
+            patience = 3 * 2 ** min(self.keep_streak, 4)   # 3s, 6s, 12s... for screens that never settle
             busy_screen = self.changed_at is not None and now - self.changed_at > patience
             nudged = self.nudged_at is not None and now - self.nudged_at > 0.8
             if (settled or busy_screen or nudged) and now - self.last_fire >= MIN_GAP:

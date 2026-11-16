@@ -194,6 +194,10 @@ def test_voice_makes_sentences_side_by_side():
     took = time.time() - start
     check("three sentences are made side by side, not one after another",
           took < 0.75 and all(c.ready.is_set() and not c.failed for c in clips), f"{took:.2f}s")
+    check("a long line is spoken in pieces, so it starts sooner",
+          speech.pieces("Click the long address bar at the very top of Chrome, type car pictures, then press Enter.")
+          == ["Click the long address bar at the very top of Chrome,", "type car pictures, then press Enter."])
+    check("short lines stay whole", speech.pieces("Click Images.") == ["Click Images."])
     queued = speech._Clip(v.gen, "later")
     v.audio_q.put(queued)
     gen = v.gen
@@ -396,7 +400,9 @@ def test_watching():
             w2.rebase(0, kept=True)
             w2.base_after = 0
         t += .5
-    check("a screen that never settles: fewer and fewer looks", len(looks) <= 3, looks)
+    gaps = [b - a for a, b in zip(looks, looks[1:])]
+    check("a screen that never settles: a look within a few seconds, then fewer and fewer",
+          looks and looks[0] - 1000 <= 5 and len(looks) <= 5 and all(b > a for a, b in zip(gaps, gaps[1:])), looks)
 
 
 def test_tracking():

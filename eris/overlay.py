@@ -206,8 +206,13 @@ class Overlay:
         self.drop_rect = (int(x1), int(y1), int(x2), int(y2))
         if self.extra:
             from .glowbox import render_drop
-            img, x, y = render_drop(self.rect, self.drop_rect)
-            self.extra.show_picture(img, x, y)
+            src, dst = self.rect, self.drop_rect
+            img, x, y = render_drop(src, dst)
+            if config.BOX_STYLE == "neon":     # the HUD connector is animated
+                from .hud import DROP_FRAMES
+                self.extra.show_frames(lambda i: img if i == 0 else render_drop(src, dst, i)[0], DROP_FRAMES, x, y)
+            else:
+                self.extra.show_picture(img, x, y)
             return
         t = max(2, config.BOX_WIDTH - 1)
         a, b, c, d = self.drop_rect

@@ -8,7 +8,7 @@ plus the drag connector, its "drop here" tab, and plates for "scroll down" / "pr
 Every picture is drawn sharp at twice the size, shrunk, and given a soft red glow."""
 import math
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 from . import config
 
@@ -23,8 +23,12 @@ def _red():
 
 
 def _font(size):
-    from .glowbox import _font as f
-    return f(size)
+    from PIL import ImageFont
+    try:
+        return ImageFont.truetype("bahnschrift.ttf", size)    # Windows' condensed HUD-style font
+    except OSError:
+        from .glowbox import _font as f
+        return f(size)
 
 
 FIELDS = {"text box", "dropdown", "list item", "tree item", "item", "menu item", "header", "slider"}
@@ -170,34 +174,94 @@ def _chevrons(cv, cx, cy, way, colour, s):
                  for px, py in pts], colour, 2.5)
 
 
-def box(w, h, hint="", grow=0, glow_margin=16, kind=None):
+def banner(text, glitch=0):
+    """The word to type, as a punk neon banner: a slanted plate with a TYPE tag and the
+    word in glowing red, with ghosts, slipped slices and scanlines. glitch: 0 = calm
+    (a little glitched), any other number = a stronger glitch (different every number)."""
+    import random
+    red = _red()
+    rnd = random.Random(glitch * 7919 + len(text))
+    f, tag_f = _font(21), _font(11)
+    tw = int(f.getlength(text))
+    tag_w = int(tag_f.getlength("TYPE")) + 18
+    m, slant, H = 12, 10, 36
+    W = tag_w + tw + 44
+    img = Image.new("RGBA", (W + 2 * m, H + 2 * m), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    x0, y0 = m, m
+    plate = [(x0 + slant, y0), (x0 + W, y0), (x0 + W - slant, y0 + H), (x0, y0 + H)]
+    d.polygon(plate, fill=DARK + (235,))
+    d.line(plate + [plate[0]], fill=red + (255,), width=2)
+    d.polygon([(x0 + slant, y0), (x0 + slant + tag_w, y0), (x0 + tag_w, y0 + H), (x0, y0 + H)],
+              fill=red + (255,))                                            # the TYPE tag
+    d.text((x0 + slant / 2 + tag_w / 2, y0 + H / 2), "TYPE", font=tag_f, fill=DARK + (255,), anchor="mm")
+    for i in range(3):                                                      # /// at the end
+        sx = x0 + W - 22 + i * 5
+        d.line((sx, y0 + H - 6, sx + 5, y0 + 6), fill=red + (150,), width=1)
+    # the word: drawn on its own layer so it can be glitched
+    tx, ty = x0 + tag_w + 14, y0 + H / 2
+    mask = Image.new("L", img.size, 0)
+    ImageDraw.Draw(mask).text((tx, ty), text, font=f, fill=255, anchor="lm")
+    strength = 1 if not glitch else 3
+    for _ in range(rnd.randint(2, 4) if glitch else 0):                      # slices slip sideways
+        y1 = rnd.randint(int(ty - 11), int(ty + 8))
+        y2 = min(int(ty + 11), y1 + rnd.randint(2, 6))
+        band = mask.crop((0, y1, mask.width, y2))
+        mask.paste(0, (0, y1, mask.width, y2))
+        mask.paste(band, (rnd.randint(-2 * strength, 2 * strength), y1))
+    glow = Image.new("RGBA", img.size, red + (0,))
+    glow.putalpha(mask.filter(ImageFilter.GaussianBlur(3)).point(lambda v: min(255, int(v * 1.3))))
+    img = Image.alpha_composite(img, glow)
+    ghosts = ((6, 0, (255, 60, 170, 150)), (-3, 1, (110, 0, 20, 200))) if glitch else ((2, 0, (255, 60, 170, 70)),)
+    for dx, dy, col in ghosts:
+        ghost = Image.new("RGBA", img.size, col[:3] + (0,))                   # magenta and dark ghosts
+        ghost.putalpha(mask.point(lambda v, a=col[3]: v * a // 255))
+        img = Image.alpha_composite(img, ghost.transform(img.size, Image.AFFINE, (1, 0, -dx, 0, 1, -dy)))
+    core = Image.new("RGBA", img.size, (255, 58, 78, 0))
+    lines = Image.new("L", img.size, 255)
+    ld = ImageDraw.Draw(lines)
+    for y in range(0, img.height, 3):                                       # scanlines
+        ld.line((0, y, img.width, y), fill=175 if glitch else 225)
+    core.putalpha(ImageChops.multiply(mask, lines))
+    img = Image.alpha_composite(img, core)
+    if glitch:                                                              # data blocks
+        bd = ImageDraw.Draw(img)
+        for _ in range(rnd.randint(2, 4)):
+            bx, by = rnd.randint(tx, x0 + W - 10), rnd.randint(y0 + 2, y0 + H - 4)
+            bd.rectangle((bx, by, bx + rnd.randint(4, 18), by + rnd.randint(1, 3)),
+                         fill=(255, 40, 60, 220) if rnd.random() < 0.7 else (255, 210, 210, 230))
+    return img
+
+
+def box(w, h, hint="", grow=0, glow_margin=16, kind=None, glitch=0):
     """The HUD box for a w x h target, laid out like glowbox.render (target at
-    glow_margin, glow_margin). The "type:" hint plate goes in the box's right end, or
-    under it when the box is too small."""
+    glow_margin, glow_margin). What to type hangs under it as a neon banner."""
     red = _red()
     G = glow_margin
     kind = shape_for(w, h, kind)
-    plate_w = _Canvas(1, 1).text_width(hint, 12) + 40 if hint else 0
-    inside = hint and kind in ("bar", "frame", "panel") and w >= plate_w + 90 and h >= 24
-    extra_h = 30 if hint and not inside else 0
-    width = w + 2 * G if inside or not hint else max(w + 2 * G, G + plate_w + 12)   # room for a plate below
-    cv = _Canvas(width, h + 2 * G + extra_h)
+    tag = banner(hint, glitch) if hint else None
+    width = w + 2 * G if tag is None else max(w + 2 * G, G - 12 + tag.width)
+    cv = _Canvas(width, h + 2 * G + (tag.height - 6 if tag else 0))
     x1, y1, x2, y2 = G - grow, G - grow, G + w + grow, G + h + grow
     SHAPES[kind](cv, x1, y1, x2, y2, red, 255)
-    if hint:
-        if inside:
-            _plate(cv, G + w - plate_w - 4, G + (h - 24) / 2, hint, 12, red)
-        else:
-            _plate(cv, G, G + h + 8, hint, 12, red)
-    return cv.finish()
+    img = cv.finish()
+    if tag:
+        img.alpha_composite(tag, (max(0, G - 12), G + h + 2))
+    return img
 
 
 # ---------------- drag, notes ----------------
-def drop(src, dst):
-    """A drag: the drop target framed (shape to suit it), a "drop here" tab on its side,
-    and a dashed connector with chevrons from what to drag. Returns (image, x, y)."""
+DROP_FRAMES = 8          # the drag connector is animated: dashes flow toward the target
+
+
+def drop(src, dst, frame=0):
+    """A drag: the drop target framed (shape to suit it), a DROP HERE tab beside it, and
+    a cyberpunk connector from what to drag: dashes flowing toward the target, a faint
+    second rail, chevrons, a DRAG tag at the start and, on some frames, a glitch.
+    frame: 0..DROP_FRAMES-1 (cycle them). Returns (image, x, y)."""
+    import random
     red = _red()
-    pad = 40
+    pad = 44
     label_w = _Canvas(1, 1).text_width("DROP HERE", 12) + 70
     x0, y0 = int(min(src[0], dst[0]) - pad), int(min(src[1], dst[1]) - pad)
     x1 = int(max(src[2], dst[2] + label_w) + pad)
@@ -206,26 +270,54 @@ def drop(src, dst):
     s = [v - o for v, o in zip(src, (x0, y0, x0, y0))]
     d = [v - o for v, o in zip(dst, (x0, y0, x0, y0))]
     SHAPES[shape_for(d[2] - d[0], d[3] - d[1])](cv, *d, red, 230)
-    # connector: from the dragged thing's edge to the target's edge
+    glitch = frame in (2, 3, 6) and config.GLITCH
+    rnd = random.Random(frame * 101)
     a = _edge(s, ((d[0] + d[2]) / 2, (d[1] + d[3]) / 2))
     b = _edge(d, ((s[0] + s[2]) / 2, (s[1] + s[3]) / 2))
     length = math.hypot(b[0] - a[0], b[1] - a[1])
     if length > 30:
         ux, uy = (b[0] - a[0]) / length, (b[1] - a[1]) / length
-        end = (b[0] - ux * 8, b[1] - uy * 8)
-        t = 6.0
-        while t < length - 26:                                        # dashes
-            p, q = t, min(t + 12, length - 26)
-            cv.line([(a[0] + ux * p, a[1] + uy * p), (a[0] + ux * q, a[1] + uy * q)], red + (255,), 2.5)
+        nx, ny = -uy, ux                                               # sideways
+        at = lambda t, side=0.0: (a[0] + ux * t + nx * side, a[1] + uy * t + ny * side)
+        end_t = length - 26
+        cv.line([at(6, 5), at(end_t, 5)], red + (70,), 1)               # a faint second rail
+        jumps = {rnd.randrange(0, max(2, int(length / 20))) for _ in range(7)} if glitch else set()
+        phase = frame / DROP_FRAMES * 20
+        t, i = 6.0 + phase - 20, 0
+        while t < end_t:                                               # flowing dashes
+            p, q = max(6.0, t), min(t + 12, end_t)
+            if q > p:
+                side = rnd.choice((-16, -11, -7, 7, 11, 16)) if i in jumps else 0
+                cv.line([at(p, side), at(q, side)], red + (255,), 2.5)
             t += 20
+            i += 1
+        c = 30 + (frame / DROP_FRAMES * 60)                            # chevrons riding along
+        while c < end_t - 10:
+            tip, back = at(c + 5), at(c - 3)
+            cv.line([(back[0] + nx * 6, back[1] + ny * 6), tip, (back[0] - nx * 6, back[1] - ny * 6)],
+                    red + (200,), 2)
+            c += 60
+        if glitch:                                    # ghost copy, tears and data blocks
+            cv.line([at(6, -5), at(end_t, -5)], (255, 60, 170, 190), 2)
+            for _ in range(rnd.randint(2, 4)):
+                tx, ty = at(rnd.uniform(20, end_t))
+                half = rnd.uniform(14, 40)
+                cv.line([(tx - half, ty), (tx + half, ty)], (255, 200, 205, 220), 1.5)
+            for _ in range(rnd.randint(8, 14)):
+                bx, by = at(rnd.uniform(10, end_t), rnd.uniform(-26, 26))
+                bw, bh = rnd.uniform(4, 22), rnd.uniform(2, 4)
+                cv.poly([(bx, by), (bx + bw, by), (bx + bw, by + bh), (bx, by + bh)],
+                        (255, 40, 60, 235) if rnd.random() < 0.75 else (255, 60, 170, 220))
         cv.poly([(a[0] - 4, a[1] - 4), (a[0] + 4, a[1] - 4), (a[0] + 4, a[1] + 4), (a[0] - 4, a[1] + 4)],
-                red + (255,))                                         # a node where it starts
+                red + (255,))                                          # a node where it starts
+        end = (b[0] - ux * 8, b[1] - uy * 8)
         base = (end[0] - ux * 18, end[1] - uy * 18)
         notch = (end[0] - ux * 11, end[1] - uy * 11)
         cv.poly([end, (base[0] - uy * 10, base[1] + ux * 10), notch,
-                 (base[0] + uy * 10, base[1] - ux * 10)], red + (255,))      # angular arrowhead
-    # the "drop here" tab, on the target's right side
-    tx, ty = d[2] + 10, (d[1] + d[3]) / 2 - 12
+                 (base[0] + uy * 10, base[1] - ux * 10)], red + (255,))     # angular arrowhead
+        lx, ly = s[2] + 8, s[1] - 22 if s[1] > 30 else s[3] + 6         # the DRAG tag
+        _plate(cv, lx, ly, "DRAG", 10, red)
+    tx, ty = d[2] + 10, (d[1] + d[3]) / 2 - 12                          # DROP HERE, beside the target
     cv.line([(d[2] + 2, ty + 12), (tx, ty + 12)], red + (255,), 2)
     _plate(cv, tx, ty, "DROP HERE", 12, red, arrow="left")
     return cv.finish(), x0, y0

@@ -47,8 +47,9 @@ After that, just open **Eris** from the Desktop. No command window.
   now and then and as she starts listening or talking (*Glitch effects* switches that off). The box has a matching *Neon HUD* style
   (Settings, then Guiding) whose shape suits what it points at: a ring for small icons and
   buttons, a slim bar for search bars, fields and list rows, a frame with a tab for ordinary
-  buttons, corner brackets for big things. Drags, *drop here*, shortcut and scroll notes all
-  match it.
+  buttons, corner brackets for big things. What to type hangs under the box as a glitching
+  neon banner, drags get a flowing, glitching connector, and *drop here*, shortcut and scroll
+  notes all match it.
 
 ## Privacy
 

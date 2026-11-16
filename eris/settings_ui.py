@@ -486,8 +486,12 @@ class SettingsWindow(ctk.CTkToplevel):
 
         c = self.card("Pointing")
         self.switch(c, "Use Windows' button list", "Windows tells her the exact position of buttons, "
-                    "links and boxes in most apps and browsers, so she can point perfectly. "
-                    "(Unity doesn't share this, so there she points by sight.)", "ELEMENTS")
+                    "links and boxes in most apps and browsers, so she can point perfectly.",
+                    "ELEMENTS")
+        self.switch(c, "Read the words on screen", "For apps that don't share their buttons (Unity, "
+                    "Blender, games), Windows' built-in text reader finds every label so she can "
+                    "point at it exactly. Only reads that app's window, only when needed, and "
+                    "never private fields.", "OCR")
         self.switch(c, "Extra-precise boxes", "When pointing by sight, she zooms in and snaps the "
                     "box exactly onto the thing to click. Uses a little more AI.", "REFINE")
         self.switch(c, "Watch what I do", "She notices when your screen changes and carries on from there.",
@@ -716,8 +720,8 @@ class SettingsWindow(ctk.CTkToplevel):
         right = self.row(c, "Logs", "If something goes wrong, send Claude the eris.log file from here.")
         self.button(right, "Open log folder", lambda: webbrowser.open(settings.folder().as_uri())).pack()
 
-        c = self.card("Test Eris", "15 tricky tests on made-up screens (search results with ads, a "
-                                   "scam pop-up, a login page, Unity...) with her current brain. "
+        c = self.card("Test Eris", "17 tricky tests on made-up screens (search results with ads, a "
+                                   "scam pop-up, a login page, Unity, Blender, a game menu...) with her current brain. "
                                    "Takes a minute or two. On Claude it costs a few cents; the "
                                    "Free brain is free.")
         row = ctk.CTkFrame(c, fg_color="transparent")

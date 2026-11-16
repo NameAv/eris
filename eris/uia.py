@@ -108,11 +108,11 @@ class UIA:
         None if Windows didn't answer in time."""
         return self._ask("fields", None, timeout)
 
-    def scan(self, timeout=0.9):
+    def scan(self, hwnd=None, timeout=0.9):
         """One pass over the window in front: its clickable things (with names and exact
         rectangles) and its private fields. {"elements": [...], "sensitive": [...]} or
         None if Windows didn't answer in time."""
-        return self._ask("scan", None, timeout)
+        return self._ask("scan", hwnd, timeout)
 
     def snap(self, box, timeout=0.6):
         """box: screen coords incl. padding. Returns an exact padded box or None."""
@@ -153,17 +153,17 @@ class UIA:
                 elif kind == "fields":
                     out["result"] = self._sensitive_fields(uia, U)
                 elif kind == "scan":
-                    out["result"] = self._scan(uia)
+                    out["result"] = self._scan(uia, arg)
             except Exception:
                 out["result"] = None
             done.set()
 
     @staticmethod
-    def _scan(uia):
-        """Everything clickable in the window in front, fetched in ONE round trip to the
+    def _scan(uia, hwnd=None):
+        """Everything clickable in the app's window, fetched in ONE round trip to the
         app (a cache request), because asking a browser element-by-element is slow."""
         import ctypes
-        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        hwnd = hwnd or ctypes.windll.user32.GetForegroundWindow()
         if not hwnd:
             return {"elements": [], "sensitive": []}
         root = uia.ElementFromHandle(hwnd)

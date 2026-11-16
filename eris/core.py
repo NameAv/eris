@@ -10,7 +10,7 @@ import traceback
 
 from pynput import keyboard
 
-from . import config, elements, privacy, screen, settings, snap
+from . import apps, config, elements, ocr, privacy, screen, settings, snap
 from .brain import Brain, locate
 from .speech import Voice, beep
 from .watcher import Watcher
@@ -273,7 +273,9 @@ class Eris:
                         self._clear()
             if ev.kind == "element":
                 exact = elements.rect(shot.elements, ev.value)
-                if exact:   # Windows' own rectangle: already perfect, no snapping needed
+                if exact and shot.elements[ev.value - 1].get("src") == "ocr":
+                    exact = snap.grow(shot.full, exact, shot.left, shot.top) or exact   # word -> its button
+                if exact:   # an exact rectangle: no AI precision pass needed
                     self.box = st["final"] = exact
                     self.box_gen = my
                     self.early_click = None
@@ -361,14 +363,19 @@ class Eris:
         return self._shoot()
 
     def _shoot(self):
-        """Screenshot + Windows' list of clickable things, fetched at the same time.
-        Private fields found by the scan are blacked out before anything leaves the PC."""
+        """Screenshot + which app you're in + the clickable things in it.
+
+        Windows' button list is fetched while the screen is captured. Apps that don't
+        share their buttons (Unity, Blender, games) get their window's words read
+        instead, and only those apps: browsers and normal apps don't need it. Private
+        fields are blacked out first, so they're never read or sent."""
+        win = apps.front_window()
         scan = {}
 
         def ask_windows():
             try:
                 from . import uia
-                scan.update(uia.get().scan() or {})
+                scan.update(uia.get().scan(win["hwnd"] if win else None) or {})
             except Exception:
                 pass
         helper = None
@@ -381,14 +388,33 @@ class Eris:
         hide = scan.get("sensitive")
         if hide is None:            # Windows didn't answer: fall back to the field check
             hide = privacy.hidden_fields()
-        if not config.PRIVACY:
-            hide = []
-        shot = screen.finish(img, mon, snap=self.brain.snap(), max_w=self.brain.shot_width(),
-                             hide=hide)
+        if config.PRIVACY and hide:
+            screen.black_out(img, hide, mon)
+        found = scan.get("elements") or []
+        if config.ELEMENTS and config.OCR and win and self._needs_reading(win, found):
+            found = ocr.merge(found, self._read_window(img, mon, win))
+        shot = screen.finish(img, mon, snap=self.brain.snap(), max_w=self.brain.shot_width())
+        shot.app = win
         if config.ELEMENTS:
-            shot.elements = elements.pick(scan.get("elements"), (mon["left"], mon["top"],
-                                                                 mon["width"], mon["height"]))
+            shot.elements = elements.pick(found, (mon["left"], mon["top"], mon["width"], mon["height"]))
         return shot
+
+    @staticmethod
+    def _needs_reading(win, found):
+        """Read the screen's words only for apps whose buttons Windows can't see (few or
+        no named items from its button list), e.g. Unity, Blender and games."""
+        return sum(1 for e in found if e.get("name")) < 8
+
+    @staticmethod
+    def _read_window(img, mon, win):
+        """Read just the app's window (the part of it on this monitor)."""
+        x1, y1, x2, y2 = win["rect"]
+        a, b = max(x1, mon["left"]), max(y1, mon["top"])
+        c, d = min(x2, mon["left"] + mon["width"]), min(y2, mon["top"] + mon["height"])
+        if c - a < 50 or d - b < 50:
+            return []
+        crop = img.crop((a - mon["left"], b - mon["top"], c - mon["left"], d - mon["top"]))
+        return ocr.reader().read(crop, a, b)
 
     def _prepare_shot(self, token):
         """Take the screenshot while your words are still being transcribed."""

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw, ImageFont
 
-from . import config, elements, screen, settings, snap
+from . import config, elements, ocr, screen, settings, snap
 
 W, H = 1920, 1080
 LINK, BUTTON, EDIT, LISTITEM, IMAGE = 50005, 50000, 50004, 50007, 50006
@@ -42,6 +42,7 @@ class Screen:
         self.things = {}            # name -> rect
         self.elements = []          # what Windows would report (empty for Unity-like apps)
         self.hidden = []            # private fields
+        self.app = None             # which app this pretends to be
 
     def text(self, xy, s, size=16, color="#202124", bold=False):
         f = _font(size, bold)
@@ -72,6 +73,7 @@ def browser(url, title="New Tab", uia=True):
     s.text((172, 59), url, 15, "#202124")
     s.thing("address_bar", bar, EDIT if uia else None, "Address and search bar")
     s.d.line((0, 92, W, 92), fill="#dadce0")
+    s.app = {"name": "Google Chrome", "title": f"{title} - Google Chrome", "exe": "chrome"}
     return s
 
 
@@ -180,6 +182,7 @@ def scr_injection():
 def unity(selected=None, add_component_open=False):
     """A Unity-like editor. Unity doesn't tell Windows about its buttons: no elements."""
     s = Screen("#383838")
+    s.app = {"name": "Unity", "title": "MyGame - SampleScene - Windows, Mac, Linux - Unity 6", "exe": "unity"}
     s.box((0, 0, W, 30), fill="#282828", radius=0)
     x = 12
     for m in ["File", "Edit", "Assets", "GameObject", "Component", "Window", "Help"]:
@@ -236,6 +239,7 @@ def unity(selected=None, add_component_open=False):
 
 def scr_settings():
     s = Screen("#f3f3f3")
+    s.app = {"name": "Windows Settings", "title": "Settings", "exe": "systemsettings"}
     s.text((60, 40), "Settings", 30, "#1b1b1b", bold=True)
     s.text((60, 110), "Personalization > Colors", 18, "#1b1b1b")
     rows = [("Choose your mode", "Light"), ("Transparency effects", "On"), ("Accent color", "Automatic"),
@@ -252,6 +256,57 @@ def scr_settings():
             dd = s.box((1180, y + 14, 1380, y + 50), fill="#ffffff", outline="#d1d1d1", radius=4)
             s.text((1196, y + 22), val, 15)
             s.thing(f"dropdown_{lab}", dd, 50003, f"{lab}: {val}")
+    return s
+
+
+def scr_blender():
+    """A Blender-like 3D editor: like Unity, it doesn't share its buttons with Windows."""
+    s = Screen("#303030")
+    s.app = {"name": "Blender", "title": "Blender [C:\\Projects\\untitled.blend]", "exe": "blender"}
+    s.box((0, 0, W, 28), fill="#232323", radius=0)
+    x = 40
+    for m in ["File", "Edit", "Render", "Window", "Help"]:
+        r = s.text((x, 5), m, 14, "#cccccc")
+        s.things[f"top_{m}"] = r
+        x = r[2] + 24
+    s.box((0, 28, 1500, 60), fill="#3d3d3d", radius=0)
+    x = 90
+    for m in ["View", "Select", "Add", "Object"]:
+        r = s.text((x, 37), m, 14, "#dddddd")
+        s.things[f"view_{m}"] = r
+        x = r[2] + 24
+    s.box((0, 60, 1500, H), fill="#393939", radius=0)
+    s.d.polygon([(700, 520), (820, 460), (940, 520), (820, 580)], fill="#a0a0a0")    # the default cube
+    s.box((1500, 28, W, 420), fill="#282828", radius=0)
+    s.text((1512, 36), "Scene Collection", 13, "#cccccc", bold=True)
+    for i, o in enumerate(["Camera", "Cube", "Light"]):
+        r = s.text((1540, 66 + i * 24), o, 13, "#cccccc")
+        s.things[f"out_{o}"] = r
+    s.box((1500, 420, W, H), fill="#2b2b2b", radius=0)
+    s.text((1512, 430), "Properties", 13, "#cccccc", bold=True)
+    return s
+
+
+def scr_game_menu():
+    """A game's settings menu: drawn by the game itself, no buttons for Windows to see."""
+    s = Screen("#14161c")
+    s.app = {"name": "Starfall", "title": "Starfall", "exe": "starfall"}
+    s.text((140, 90), "SETTINGS", 44, "#e8e8e8", bold=True)
+    for i, tab in enumerate(["Graphics", "Audio", "Controls"]):
+        r = s.text((140 + i * 220, 180), tab, 24, "#ffcc00" if i == 0 else "#8a8f9c", bold=True)
+        s.things[f"tab_{tab}"] = r
+    rows = [("Resolution", "1920 x 1080"), ("Window Mode", "Fullscreen"), ("V-Sync", "Off"),
+            ("Shadows", "High")]
+    for i, (label, value) in enumerate(rows):
+        y = 270 + i * 70
+        s.box((130, y, 1100, y + 54), fill="#1d2029", radius=6)
+        s.things[f"label_{label}"] = s.text((160, y + 15), label, 20, "#d0d3dc")
+        v = s.box((820, y + 9, 1080, y + 45), fill="#2a2f3b", outline="#4a5160", radius=4)
+        s.text((840, y + 15), value, 18, "#ffffff")
+        s.things[f"value_{label}"] = v
+    apply = s.box((900, 600, 1100, 650), fill="#ffcc00", radius=6)
+    s.text((958, 611), "Apply", 22, "#14161c", bold=True)
+    s.things["apply"] = apply
     return s
 
 
@@ -304,6 +359,10 @@ TESTS = [
          targets=("item_Rigidbody",), avoid=("item_Rigidbody 2D",), wait=("click",)),
     Test("Unity: tiny toolbar icon", "unity", "how do i play my game", lambda: unity("Player"),
          targets=("play",), avoid=("pause", "step"), wait=("click",)),
+    Test("Blender: find the Add menu", "apps", "how do i add a new cube in blender", scr_blender,
+         targets=("view_Add",), avoid=("top_File",), wait=("click",)),
+    Test("Game menu: turn on V-Sync", "apps", "turn on vsync", scr_game_menu,
+         targets=("value_V-Sync",), avoid=("value_Shadows", "value_Window Mode"), wait=("click",)),
     Test("Windows settings toggle", "apps", "turn on dark mode for apps", scr_settings,
          targets=("toggle_Dark mode for apps",), wait=("click",)),
     Test("Vague question: ask, don't guess", "conversation", "how do i do it", scr_settings,
@@ -318,12 +377,20 @@ from .core import WATCH_PROMPT as AUTO_PROMPT   # the exact prompt real automati
 
 # ======================= running and grading =======================
 def _shot_for(sc):
+    """The same steps Eris uses on a real screen: black out private fields, read the words
+    if the app doesn't share its buttons, then shrink and encode."""
     from .brain import Brain
     mon = {"left": 0, "top": 0, "width": W, "height": H}
-    shot = screen.finish(sc.img.copy(), mon, snap=Brain.snap(), max_w=Brain.shot_width(),
-                         hide=sc.hidden if config.PRIVACY else [])
-    if config.ELEMENTS and sc.elements:
-        shot.elements = elements.pick(sc.elements, (0, 0, W, H))
+    img = sc.img.copy()
+    if config.PRIVACY and sc.hidden:
+        screen.black_out(img, sc.hidden, mon)
+    found = list(sc.elements)
+    if config.ELEMENTS and config.OCR and sum(1 for e in found if e.get("name")) < 8:
+        found = ocr.merge(found, ocr.reader().read(img))
+    shot = screen.finish(img, mon, snap=Brain.snap(), max_w=Brain.shot_width())
+    shot.app = sc.app
+    if config.ELEMENTS and found:
+        shot.elements = elements.pick(found, (0, 0, W, H))
     return shot
 
 
@@ -375,6 +442,10 @@ def grade(t, sc, shot, got, reply):
             box, how = elements.rect(shot.elements, e.value), f"element {e.value}"
             if not box:
                 fails.append(f"picked element {e.value}, which isn't in the list")
+            elif shot.elements[e.value - 1].get("src") == "ocr":   # same as Eris: word -> its button
+                grown = snap.grow(shot.full, box, shot.left, shot.top)
+                box, how = grown or box, how + (" (read off the screen, grown to its button)" if grown
+                                                 else " (read off the screen)")
             break
         if e.kind == "box":
             rough = shot.to_screen(e.value)

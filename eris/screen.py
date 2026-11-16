@@ -24,7 +24,8 @@ class Shot:
     img_w: int
     img_h: int
     full: object = field(default=None, repr=False)   # full-sharpness PIL image of the monitor
-    elements: list = field(default_factory=list)     # Windows' clickable things (see elements.py)
+    elements: list = field(default_factory=list)     # clickable things (see elements.py)
+    app: object = None                               # the app in front (see apps.py)
 
     def to_screen(self, box):
         """Image coords from the brain -> real desktop coords, clamped and padded."""
@@ -76,7 +77,7 @@ def monitor_under_mouse(sct):
     return sct.monitors[1]
 
 
-def _black_out(img, rects, mon):
+def black_out(img, rects, mon):
     """Cover private fields (screen coords) with a solid block labelled 'hidden'."""
     d = ImageDraw.Draw(img)
     for x1, y1, x2, y2 in rects:
@@ -105,7 +106,7 @@ def finish(img, mon, snap=1, max_w=None, hide=()) -> Shot:
     """Black out private fields, shrink and encode. snap=28 makes both sides multiples
     of 28, which Qwen2.5-VL needs so its coordinates line up with the image we sent."""
     if hide:   # before anything else touches it, so private fields never leave the PC
-        _black_out(img, hide, mon)
+        black_out(img, hide, mon)
     full = img
     w, h = img.size
     max_w = max_w or config.SHOT_MAX_WIDTH

@@ -19,15 +19,10 @@ from . import config
 
 
 def foreground_title():
-    if sys.platform != "win32":
-        return ""
-    import ctypes
-    u32 = ctypes.windll.user32
-    hwnd = u32.GetForegroundWindow()
-    n = u32.GetWindowTextLengthW(hwnd)
-    buf = ctypes.create_unicode_buffer(n + 1)
-    u32.GetWindowTextW(hwnd, buf, n + 1)
-    return buf.value
+    """Title of the app in front (ignoring Eris's own windows)."""
+    from . import apps
+    win = apps.front_window()
+    return win["title"] if win else ""
 
 
 def blocked_app():

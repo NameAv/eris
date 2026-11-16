@@ -85,10 +85,16 @@ updates come from here, so protect it.
 
 ### Getting the most out of the Free brain
 
-- **Pick-by-number boxes.** Windows lists the clickable things on screen (buttons, links, boxes) with
-  exact positions. Eris gives the AI that numbered list, so it picks one by number instead of
-  guessing pixels. That's exact, and much easier for a small model. Unity doesn't share this list,
-  so there she points by sight and the box gets snapped onto real edges.
+- **She knows which app you're in** (Chrome, Blender, Discord...) and tells the AI, ignoring Eris's
+  own window.
+- **Pick-by-number boxes, in any app.** The AI gets a numbered list of what's on screen and picks
+  one by number instead of guessing pixels. That's exact, and much easier for a small model.
+  The list comes from:
+  1. Windows' button list, for browsers and most apps.
+  2. Windows' built-in text reader, for apps that don't share their buttons (Unity, Blender,
+     games). It reads only that app's window, only when needed, and never private fields.
+     A picked word's box grows to fill the button it's on.
+  3. For icons with no words, she points by sight and the box snaps onto real edges.
 - **Keep it on the graphics card.** Settings, then Brain, shows how much of the model fits. If it
   says less than 100% (Unity uses graphics memory too), click **Make Ollama lighter**, close
   GPU-heavy apps, or use `qwen3-vl:4b`.
@@ -98,10 +104,10 @@ updates come from here, so protect it.
 ## Test lab
 
 **Settings, then App, then Test Eris** runs 15 tricky tests on made-up screens with her current
-brain. The tests cover a Google results page with a sponsored ad, a site's own search box vs the
+brain (17 of them). The tests cover a Google results page with a sponsored ad, a site's own search box vs the
 address bar, a login page, a fake "virus" scam pop-up, a page with hidden instructions aimed at AI,
-and a Unity editor (select the object, Add Component, Rigidbody vs Rigidbody 2D, the tiny play
-button). Each reply is graded: did the box land on the right thing, did she avoid the ad, refuse
+a Unity editor (select the object, Add Component, Rigidbody vs Rigidbody 2D, the tiny play
+button), a Blender-style editor and a game settings menu. Each reply is graded: did the box land on the right thing, did she avoid the ad, refuse
 the password, spot the scam, ignore the hidden instructions, use the right format, and how fast
 was she. The report (in the log folder, under `tests`) shows exactly where she needs work.
 Also runnable as `python -m eris.bench`.
@@ -137,6 +143,8 @@ If it can't connect, Eris switches to the built-in Windows voice by herself. Use
 - `eris/protocol.py`: parses `BOX / SAY / WAIT / DONE` lines as they stream in
 - `eris/privacy.py`: looking away from and blacking out private fields
 - `eris/glowbox.py`: the rounded, glowing box
+- `eris/apps.py`: which app is in front
+- `eris/ocr.py`: Windows' built-in text reader, for apps without a button list
 - `eris/bench.py`: the test lab
 - `eris/elements.py`: Windows' numbered list of clickable things
 - `eris/snap.py`: snaps boxes onto real edges (pixels)

@@ -16,4 +16,12 @@ tqdm
 edge-tts>=6.1,<8
 pywin32; sys_platform == "win32"
 comtypes>=1.2,<2; sys_platform == "win32"
+# Windows' built-in text reader (OCR), for apps that don't share their buttons
+winrt-runtime>=3,<5; sys_platform == "win32"
+winrt-Windows.Media.Ocr; sys_platform == "win32"
+winrt-Windows.Graphics.Imaging; sys_platform == "win32"
+winrt-Windows.Storage.Streams; sys_platform == "win32"
+winrt-Windows.Foundation; sys_platform == "win32"
+winrt-Windows.Foundation.Collections; sys_platform == "win32"
+winrt-Windows.Globalization; sys_platform == "win32"
 pyttsx3; sys_platform != "win32"

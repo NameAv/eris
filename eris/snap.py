@@ -137,6 +137,47 @@ def pixel_snap(full, box, left=0, top=0):
     return (nx1 + rx1 + left - p, ny1 + ry1 + top - p, nx2 + rx1 + left + p, ny2 + ry1 + top + p)
 
 
+def grow(full, box, left=0, top=0, reach_x=300, reach_y=28):
+    """A word was found on screen (by the text reader); grow its box out to the button,
+    field or list row it sits in: keep extending while the colour around the word stays
+    the same, stop at the control's edge. Returns None if the word isn't inside a
+    control (e.g. plain text on a page), so the word's own box is kept."""
+    p = config.BOX_PADDING
+    x1, y1 = int(box[0] + p - left), int(box[1] + p - top)
+    x2, y2 = int(round(box[2] - p - left)), int(round(box[3] - p - top))
+    W, H = full.size
+    rx1, ry1 = max(0, x1 - reach_x), max(0, y1 - reach_y)
+    rx2, ry2 = min(W, x2 + reach_x), min(H, y2 + reach_y)
+    img = np.asarray(full.crop((rx1, ry1, rx2, ry2)).convert("RGB"), dtype=np.int16)
+    tx1, ty1, tx2, ty2 = x1 - rx1, y1 - ry1, x2 - rx1, y2 - ry1
+    if tx2 - tx1 < 2 or ty2 - ty1 < 2:
+        return None
+    ring = np.concatenate([img[max(0, ty1 - 3):ty1, tx1:tx2].reshape(-1, 3),
+                           img[ty2:ty2 + 3, tx1:tx2].reshape(-1, 3),
+                           img[ty1:ty2, max(0, tx1 - 3):tx1].reshape(-1, 3),
+                           img[ty1:ty2, tx2:tx2 + 3].reshape(-1, 3)])
+    if not len(ring):
+        return None
+    fill = np.median(ring, axis=0)                  # the control's background colour
+    same = np.abs(img - fill).max(axis=2) < 14
+
+    def extend(start, step, limit, line):
+        i = start
+        while 0 <= i + step < limit and line(i + step).mean() > 0.8:
+            i += step
+        return i
+    a = extend(tx1, -1, img.shape[1], lambda c: same[ty1:ty2, c])
+    c = extend(tx2 - 1, +1, img.shape[1], lambda c: same[ty1:ty2, c])
+    b = extend(ty1, -1, img.shape[0], lambda r: same[r, a:c + 1])
+    d = extend(ty2 - 1, +1, img.shape[0], lambda r: same[r, a:c + 1])
+    if a == 0 or b == 0 or c == img.shape[1] - 1 or d == img.shape[0] - 1:
+        return None                                 # no edge within reach: not a control
+    area, text_area = (c + 1 - a) * (d + 1 - b), (tx2 - tx1) * (ty2 - ty1)
+    if area < 1.3 * text_area or area > 40 * text_area:
+        return None
+    return (a + rx1 + left - p, b + ry1 + top - p, c + 1 + rx1 + left + p, d + 1 + ry1 + top + p)
+
+
 def snap(shot, box):
     """Best exact box for `box` (screen coords), or None to keep it."""
     if sys.platform == "win32" and config.USE_UIA:

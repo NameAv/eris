@@ -50,6 +50,7 @@ PRIVACY = True          # look away from password/email/card fields, black them 
 PRIVATE_APPS = ["1Password", "Bitwarden", "KeePass", "LastPass", "Dashlane",
                 "NordPass", "Proton Pass", "Authenticator", "Credential Manager"]
 USE_UIA = True          # ask Windows for exact element edges (browsers, most apps)
+OCR = True              # read the words on screen in apps that don't share their buttons
 ELEMENTS = True         # give the AI Windows' numbered list of clickable things (exact boxes)
 REFINE = True           # zoom in to snap the box exactly onto the target
 WATCH = True            # watch the screen while waiting and react to what you do

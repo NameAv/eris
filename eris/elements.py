@@ -39,17 +39,20 @@ def describe(elements, shot, coords="pixels"):
         if coords == "norm1000":
             a, c = a * 1000 / shot.img_w, c * 1000 / shot.img_w
             b, d = b * 1000 / shot.img_h, d * 1000 / shot.img_h
-        kind = TYPE_NAMES.get(e["type"], "item")
+        kind = "text" if e.get("src") == "ocr" else TYPE_NAMES.get(e["type"], "item")
         name = f' "{e["name"]}"' if e["name"] else ""
         lines.append(f"[{i}] {kind}{name} at {int(a)},{int(b)} to {int(c)},{int(d)}")
-    return ("Clickable things Windows reports on this screen. If the thing to click is one "
-            "of these, reply ELEMENT <number> instead of BOX (it's exact):\n" + "\n".join(lines))
+    return ("Things on this screen, from Windows' list of buttons and the words read off "
+            "the screen. If the thing to click is one of these, reply ELEMENT <number> "
+            "instead of BOX (it's exact). A \"text\" item is just a word on screen: if the "
+            "thing to click is a switch, box or icon NEXT to a word, use BOX for it instead.\n"
+            + "\n".join(lines))
 
 
 def rect(elements, n):
     """Screen box (with padding) for element number n, or None."""
     if not elements or not 1 <= n <= len(elements):
         return None
-    x1, y1, x2, y2 = elements[n - 1]["rect"]
+    x1, y1, x2, y2 = (int(round(v)) for v in elements[n - 1]["rect"])
     p = config.BOX_PADDING
     return (x1 - p, y1 - p, x2 + p, y2 + p)

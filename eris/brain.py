@@ -10,7 +10,7 @@ import urllib.request
 
 import anthropic
 
-from . import config, elements, screen, settings
+from . import apps, config, elements, screen, settings
 from .protocol import Event, LineStream, parse_line
 
 SYSTEM = """You are Eris, a guide who lives on the user's computer. They might be working \
@@ -322,6 +322,9 @@ class Brain:
         """Stream one step. Calls on_event(Event) as lines arrive. alive() -> False aborts."""
         coords = local_info()["coords"] if config.BRAIN == "local" else "pixels"
         user_text = f"{text}\n\n(Screenshot is {shot.img_w}x{shot.img_h} pixels.)"
+        app = apps.describe(getattr(shot, "app", None))
+        if app:
+            user_text += "\n" + app
         listed = elements.describe(getattr(shot, "elements", None), shot, coords)
         if listed:
             user_text += "\n\n" + listed

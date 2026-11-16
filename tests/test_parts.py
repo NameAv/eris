@@ -104,9 +104,10 @@ def test_hud_shapes():
     check("...calm is the same every time (no flicker between glitches)",
           np.array_equal(calm, np.asarray(hud.banner("rigidbody", 0))))
     frames = [np.asarray(glowbox.render_drop((100, 600, 220, 630), (100, 100, 200, 124), i)[0]) for i in range(hud.DROP_FRAMES)]
-    check("the drag connector moves from frame to frame", not np.array_equal(frames[0], frames[1]))
+    check("the drag line is one steady line between glitches", np.array_equal(frames[0], frames[1]))
+    check("...and glitches on some frames", not np.array_equal(frames[0], frames[3]))
     config.GLITCH = False
-    check("Glitch effects off: the drag line still flows, without glitching",
+    check("Glitch effects off: the drag line stays a steady line",
           np.asarray(glowbox.render_drop((100, 600, 220, 630), (100, 100, 200, 124), 3)[0]).sum() < frames[3].sum())
     config.GLITCH = True
     config.BOX_STYLE = "glow"

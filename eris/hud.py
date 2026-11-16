@@ -251,14 +251,15 @@ def box(w, h, hint="", grow=0, glow_margin=16, kind=None, glitch=0):
 
 
 # ---------------- drag, notes ----------------
-DROP_FRAMES = 8          # the drag connector is animated: dashes flow toward the target
+DROP_FRAMES = 8          # the drag line is animated: it glitches on some frames
 
 
 def drop(src, dst, frame=0):
     """A drag: the drop target framed (shape to suit it), a DROP HERE tab beside it, and
-    a cyberpunk connector from what to drag: dashes flowing toward the target, a faint
-    second rail, chevrons, a DRAG tag at the start and, on some frames, a glitch.
-    frame: 0..DROP_FRAMES-1 (cycle them). Returns (image, x, y)."""
+    one long glowing line from what to drag to an arrowhead at the target, with a DRAG
+    tag at the start. Some frames glitch: pieces of the line jump aside or blink out, a
+    ghost copy, tears, data blocks. frame: 0..DROP_FRAMES-1 (cycle them).
+    Returns (image, x, y)."""
     import random
     red = _red()
     pad = 44
@@ -280,23 +281,16 @@ def drop(src, dst, frame=0):
         nx, ny = -uy, ux                                               # sideways
         at = lambda t, side=0.0: (a[0] + ux * t + nx * side, a[1] + uy * t + ny * side)
         end_t = length - 26
-        cv.line([at(6, 5), at(end_t, 5)], red + (70,), 1)               # a faint second rail
-        jumps = {rnd.randrange(0, max(2, int(length / 20))) for _ in range(7)} if glitch else set()
-        phase = frame / DROP_FRAMES * 20
-        t, i = 6.0 + phase - 20, 0
-        while t < end_t:                                               # flowing dashes
-            p, q = max(6.0, t), min(t + 12, end_t)
-            if q > p:
-                side = rnd.choice((-16, -11, -7, 7, 11, 16)) if i in jumps else 0
-                cv.line([at(p, side), at(q, side)], red + (255,), 2.5)
-            t += 20
-            i += 1
-        c = 30 + (frame / DROP_FRAMES * 60)                            # chevrons riding along
-        while c < end_t - 10:
-            tip, back = at(c + 5), at(c - 3)
-            cv.line([(back[0] + nx * 6, back[1] + ny * 6), tip, (back[0] - nx * 6, back[1] - ny * 6)],
-                    red + (200,), 2)
-            c += 60
+        piece = 26.0                                                   # the line, in short pieces...
+        n = max(1, int((end_t - 6) / piece) + 1)
+        jumps = {rnd.randrange(0, n) for _ in range(max(2, n // 4))} if glitch else set()
+        gaps = {rnd.randrange(0, n) for _ in range(max(1, n // 8))} if glitch else set()
+        for i in range(n):                                             # ...so a glitch can knock some aside
+            p, q = 6 + i * piece, min(6 + (i + 1) * piece, end_t)
+            if q <= p or i in gaps:
+                continue
+            side = rnd.choice((-16, -11, -7, 7, 11, 16)) if i in jumps else 0
+            cv.line([at(p, side), at(q, side)], red + (255,), 3)
         if glitch:                                    # ghost copy, tears and data blocks
             cv.line([at(6, -5), at(end_t, -5)], (255, 60, 170, 190), 2)
             for _ in range(rnd.randint(2, 4)):

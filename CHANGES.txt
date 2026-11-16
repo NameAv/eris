@@ -1,3 +1,4 @@
+v1.18.1: The drag line is now one long glowing line with an arrowhead; the glitches happen on the line itself.
 v1.18.0: Neon HUD: what to type is now a glitching neon banner under the box, and the drag line flows toward the target with cyberpunk glitches (Glitch effects turns the glitches off).
 v1.17.0: Neon HUD box takes a shape that suits what it points at (ring, bar, frame or panel), and drags, drop here, shortcut and scroll notes now match the HUD style. Drop here sits beside the target so it no longer covers the next item.
 v1.16.0: Neon look comes alive: red light streaks drift across the top of the window, with glitches now and then and when Eris starts listening or talking (Settings, then Eris: Glitch effects).

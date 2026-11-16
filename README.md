@@ -48,7 +48,7 @@ After that, just open **Eris** from the Desktop. No command window.
   (Settings, then Guiding) whose shape suits what it points at: a ring for small icons and
   buttons, a slim bar for search bars, fields and list rows, a frame with a tab for ordinary
   buttons, corner brackets for big things. What to type hangs under the box as a glitching
-  neon banner, drags get a flowing, glitching connector, and *drop here*, shortcut and scroll
+  neon banner, drags get one long glowing line to an arrowhead that glitches now and then, and *drop here*, shortcut and scroll
   notes all match it.
 
 ## Privacy

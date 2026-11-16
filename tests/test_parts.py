@@ -228,6 +228,24 @@ def test_tracking_needs_something_to_follow():
           result == "same" and box == (496, 96, 704, 144), (result, box))
 
 
+def test_tracking_a_long_bar():
+    from eris import tracker
+    W, H = 2000, 1100
+    page = Image.new("RGB", (W, H), "#202124")
+    d = ImageDraw.Draw(page)
+    d.rounded_rectangle((150, 40, 1850, 84), 20, fill="#35363a")              # an address bar...
+    d.text((190, 50), "google.com/search?q=rocket+ship", fill="#e8eaed", font=_font(20))   # ...text only at the left
+    p = config.BOX_PADDING
+    bar = (150 - p, 40 - p, 1850 + p, 84 + p)
+    t = tracker.Tracker.make(page, 0, 0, bar)
+    check("a long bar with its text at one end can be tracked", t is not None)
+    moved = Image.new("RGB", (W, H), "#101010")
+    moved.paste(page.crop((0, 0, 1900, 900)), (-120, 160))                    # you dragged the window
+    result, box = t.find(tracker.grey(moved), 0, 0)
+    check("...and the box follows when the window is dragged",
+          result == "moved" and box == (bar[0] - 120, bar[1] + 160, bar[2] - 120, bar[3] + 160), (result, box))
+
+
 def test_box_shows_straight_away():
     from eris import glowbox
     drawn, faded = [], []

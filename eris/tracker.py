@@ -76,6 +76,27 @@ def _match_map(img, pic):
     return out
 
 
+def _busiest(full, left, top, rect, step=24):
+    """The MAX_W x MAX_H part of a big target with the most detail (the text at the left of
+    an address bar, not the empty middle), so it can be recognised."""
+    x1, y1, x2, y2 = rect
+    w, h = min(MAX_W, x2 - x1), min(MAX_H, y2 - y1)
+    area = full.crop((max(0, x1 - left), max(0, y1 - top), max(0, x2 - left), max(0, y2 - top)))
+    g = grey(area)
+    if g.size == 0:
+        return rect
+    ink = (np.abs(g - np.median(g)) > INK).astype(np.int32)
+    sums = np.zeros((ink.shape[0] + 1, ink.shape[1] + 1), dtype=np.int64)
+    sums[1:, 1:] = ink.cumsum(0).cumsum(1)
+    best, at = -1, (0, 0)
+    for oy in range(0, max(1, ink.shape[0] - h + 1), step):
+        for ox in range(0, max(1, ink.shape[1] - w + 1), step):
+            n = sums[oy + h, ox + w] - sums[oy, ox + w] - sums[oy + h, ox] + sums[oy, ox]
+            if n > best:
+                best, at = n, (ox, oy)
+    return x1 + at[0], y1 + at[1], x1 + at[0] + w, y1 + at[1] + h
+
+
 class Tracker:
     def __init__(self, picture, box, offset):
         self.picture = picture
@@ -102,12 +123,8 @@ class Tracker:
         x1, y1, x2, y2 = box[0] + inset, box[1] + inset, box[2] - inset, box[3] - inset
         if hint and box_visible and x2 - x1 > 160:
             x2 -= min(int((x2 - x1) * 0.6), len(hint) * 8 + 30)
-        if x2 - x1 > MAX_W:
-            x1 += (x2 - x1 - MAX_W) // 2
-            x2 = x1 + MAX_W
-        if y2 - y1 > MAX_H:
-            y1 += (y2 - y1 - MAX_H) // 2
-            y2 = y1 + MAX_H
+        if x2 - x1 > MAX_W or y2 - y1 > MAX_H:     # a big target: remember its most detailed part
+            x1, y1, x2, y2 = _busiest(full, left, top, (x1, y1, x2, y2))
         cx1, cy1 = x1 - left, y1 - top
         if x2 - x1 < 8 or y2 - y1 < 6 or cx1 < 0 or cy1 < 0 or x2 - left > full.width or y2 - top > full.height:
             return None

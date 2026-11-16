@@ -25,7 +25,7 @@ CHANGED = 0.0025           # share of pixels that must differ from the start = "
 STILL = 0.0008             # share of pixels changing between looks = "it has settled"
 TICK = 0.5                 # seconds between looks at the whole screen
 FAST = 0.15                # seconds between looks at the box's own spot
-REACH_X, REACH_Y = 250, 450   # how far the quick look searches for a button that moved
+REACH_X, REACH_Y = 500, 450   # how far the quick look searches for a button that moved
 MIN_GAP = 4.0              # never ask the AI more often than this
 MAX_LOOKS_PER_STEP = 6     # then go quiet until you click the box / press F9
 SCROLL_LIKE = 0.03         # after the box's button moved: the rest of the screen moved with it
@@ -232,7 +232,7 @@ class Watcher:
                 self.still_since = None
             elif self.still_since is None:
                 self.still_since = now
-            settle = 0.8 if self.eris.waiting == "click" else 1.4
+            settle = 0.6 if self.eris.waiting == "click" else 1.0
             settled = (self.changed_at is not None and self.still_since is not None
                        and now - self.still_since >= settle)
             patience = 3 * 2 ** min(self.keep_streak, 4)   # 3s, 6s, 12s... for screens that never settle

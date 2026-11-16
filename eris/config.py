@@ -28,7 +28,7 @@ BOX_WIDTH = 4
 BOX_PADDING = 4         # px of extra room around the target
 BOX_TIMEOUT = 20        # seconds before the box hides itself no matter what
 CLICK_SLOP = 12         # px: a click this close to the box still counts
-SETTLE_DELAY = 0.45     # seconds to let the UI update after your click before looking again
+SETTLE_DELAY = 0.2      # seconds before the first check after your click (then it watches until it settles)
 
 # --- Screenshots ---
 SHOT_MAX_WIDTH = 1280   # downscale before sending (smaller = faster upload)

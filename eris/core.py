@@ -215,7 +215,7 @@ class Eris:
             elif prev is not None and screen_changed(now, prev) <= SCREEN_STILL:
                 return seen                # changed, and settled
             prev = now
-            time.sleep(0.25)
+            time.sleep(0.15)
 
     def _what_changed(self, ref, now=None):
         """What your last action changed, from a free before/after look: "nothing", a

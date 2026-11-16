@@ -1,3 +1,4 @@
+v1.19.5: What to type now sits in the empty right end of the box (or beside it) instead of covering what's underneath. The status chip no longer gets cut off in a narrow window, and the subtitle is just the brain's name.
 v1.19.4: The drag line no longer runs through its little ring.
 v1.19.3: Drag lines: the little box near the arrow is gone, and the third design is new (a sharp peak, a notched raised stretch, ticks, a diamond and chevrons).
 v1.19.2: Each drag line is a single line now (no doubled-up lines or bars beside it).

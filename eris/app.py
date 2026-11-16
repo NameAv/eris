@@ -209,8 +209,7 @@ class App(ctk.CTk):
         top.pack(fill="x", padx=18, pady=(16, 8))
         self.avatar = Avatar(top)
         self.avatar.pack(side="left")
-        names = ctk.CTkFrame(top, fg_color="transparent")
-        names.pack(side="left", padx=12)
+        names = ctk.CTkFrame(top, fg_color="transparent")   # packed after the right side, below
         ctk.CTkLabel(names, text="Eris", font=font(24, "bold"), text_color=T.TEXT,
                      height=26).pack(anchor="w")
         self.subtitle = ctk.CTkLabel(names, text="", font=font(12), text_color=T.MUTED, height=16)
@@ -226,6 +225,7 @@ class App(ctk.CTk):
         self.chip_text = ctk.CTkLabel(self.chip, text="", font=font(12, "bold"),
                                       text_color=T.TEXT)
         self.chip_text.pack(side="left", padx=(0, 12))
+        names.pack(side="left", padx=12)   # last: when the window is narrow, the subtitle gives way, not the status
         self.update_btn = ctk.CTkButton(top, text="Update", width=110, height=30, corner_radius=T.r(15),
                                         fg_color="#1f6b45", hover_color="#185437",
                                         font=font(12, "bold"), command=self.do_update)
@@ -534,7 +534,7 @@ class App(ctk.CTk):
         self._bind_mic()   # in case the button made new inner widgets
         brain = {"claude": "Opus brain", "claude-cheap": "Haiku brain",
                  "local": "free local brain"}.get(config.BRAIN, "")
-        self.subtitle.configure(text=f"screen guide · {brain}")
+        self.subtitle.configure(text=brain)
 
     def _update_hint(self):
         self.hint.configure(text=f"{config.TALK_KEY.upper()} talk   {config.NEXT_KEY.upper()} next"

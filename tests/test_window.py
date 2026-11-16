@@ -95,6 +95,15 @@ def welcome():
     check("welcome greeting shown", app.welcome is not None and app.welcome.winfo_exists())
     app.update()
     right = app.winfo_rootx() + app.winfo_width()
+    app._set_state("guiding")
+    app.geometry("400x760")       # the narrowest the window goes
+    app.update()
+    check("the status chip isn't cut off in a narrow window",
+          app.chip_text.winfo_width() >= app.chip_text.winfo_reqwidth() - 2, (app.chip_text.winfo_width(), app.chip_text.winfo_reqwidth()))
+    app.geometry("480x760")
+    app._set_state("ready")
+    app.update()
+    right = app.winfo_rootx() + app.winfo_width()
     check("all four step buttons fit in the window",
           all(b.winfo_rootx() + b.winfo_width() <= right for b in app.ctl_row.winfo_children()),
           [(b.cget("text"), b.winfo_rootx() + b.winfo_width(), right) for b in app.ctl_row.winfo_children()])

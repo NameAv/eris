@@ -254,18 +254,26 @@ def label(text, size=17, prefix=None, arrow=None):
 
 def box(w, h, hint="", grow=0, glow_margin=16, kind=None, variant=0):
     """The HUD box for a w x h target, laid out like glowbox.render (target at
-    glow_margin, glow_margin). What to type hangs under it on a red plate."""
+    glow_margin, glow_margin). What to type sits on a red plate in the box's right end
+    (the empty end of a search bar: you type from the left), or just beside the box
+    when it doesn't fit, so it never covers what's underneath."""
     red = _red()
     G = glow_margin
     kind = shape_for(w, h, kind)
-    tag = label(hint, 17, prefix="TYPE") if hint else None
-    width = w + 2 * G if tag is None else max(w + 2 * G, G - 10 + tag.width)
-    cv = _Canvas(width, h + 2 * G + (tag.height - 6 if tag else 0))
+    tag = None
+    if hint:
+        size = 15 if h >= 34 else 13
+        tag = label(hint, size, prefix="TYPE")
+        inside = kind != "ring" and w >= tag.width + 60 and h >= tag.height - 22
+    width = w + 2 * G if tag is None or inside else w + G + tag.width
+    cv = _Canvas(width, max(h + 2 * G, tag.height if tag else 0))
     x1, y1, x2, y2 = G - grow, G - grow, G + w + grow, G + h + grow
     SHAPES[kind](cv, x1, y1, x2, y2, red, 255, variant % VARIANTS)
     img = cv.finish()
     if tag:
-        img.alpha_composite(tag, (max(0, G - 10), G + h + 2))
+        ty = int(G + (h - tag.height) / 2)
+        tx = G + w - tag.width + 4 if inside else G + w - 2
+        img.alpha_composite(tag, (int(tx), max(0, ty)))
     return img
 
 

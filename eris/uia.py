@@ -13,6 +13,13 @@ BUTTON, CHECKBOX, COMBOBOX, EDIT, HYPERLINK, IMAGE, LISTITEM = 50000, 50002, 500
 MENUITEM, RADIO, SLIDER, TABITEM, TREEITEM, DATAITEM, SPLITBUTTON, HEADERITEM = (
     50011, 50013, 50015, 50019, 50024, 50029, 50031, 50035)
 TEXT = 50020
+# UI Automation property ids
+P_RECT, P_TYPE, P_NAME, P_AUTOMATION_ID, P_HELP = 30001, 30003, 30005, 30011, 30013
+P_PASSWORD, P_OFFSCREEN = 30019, 30022
+TYPE_NAMES = {BUTTON: "button", CHECKBOX: "checkbox", COMBOBOX: "dropdown", EDIT: "text box",
+              HYPERLINK: "link", IMAGE: "image", LISTITEM: "list item", MENUITEM: "menu item",
+              RADIO: "option", SLIDER: "slider", TABITEM: "tab", TREEITEM: "tree item",
+              DATAITEM: "item", SPLITBUTTON: "button", HEADERITEM: "header"}
 CLICKABLE = {BUTTON, CHECKBOX, COMBOBOX, EDIT, HYPERLINK, IMAGE, LISTITEM, MENUITEM, RADIO,
              SLIDER, TABITEM, TREEITEM, DATAITEM, SPLITBUTTON, HEADERITEM}
 # Big containers: almost never what you'd point at
@@ -100,6 +107,12 @@ class UIA:
         None if Windows didn't answer in time."""
         return self._ask("fields", None, timeout)
 
+    def scan(self, timeout=0.9):
+        """One pass over the window in front: its clickable things (with names and exact
+        rectangles) and its private fields. {"elements": [...], "sensitive": [...]} or
+        None if Windows didn't answer in time."""
+        return self._ask("scan", None, timeout)
+
     def snap(self, box, timeout=0.6):
         """box: screen coords incl. padding. Returns an exact padded box or None."""
         from . import config
@@ -138,9 +151,49 @@ class UIA:
                     out["result"] = sensitive
                 elif kind == "fields":
                     out["result"] = self._sensitive_fields(uia, U)
+                elif kind == "scan":
+                    out["result"] = self._scan(uia)
             except Exception:
                 out["result"] = None
             done.set()
+
+    @staticmethod
+    def _scan(uia):
+        """Everything clickable in the window in front, fetched in ONE round trip to the
+        app (a cache request), because asking a browser element-by-element is slow."""
+        import ctypes
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        if not hwnd:
+            return {"elements": [], "sensitive": []}
+        root = uia.ElementFromHandle(hwnd)
+        cache = uia.CreateCacheRequest()
+        for prop in (P_RECT, P_TYPE, P_NAME, P_AUTOMATION_ID, P_HELP, P_PASSWORD, P_OFFSCREEN):
+            cache.AddProperty(prop)
+        kinds = None
+        for t in sorted(CLICKABLE):
+            c = uia.CreatePropertyCondition(P_TYPE, t)
+            kinds = c if kinds is None else uia.CreateOrCondition(kinds, c)
+        cond = uia.CreateAndCondition(kinds, uia.CreatePropertyCondition(P_OFFSCREEN, False))
+        found = root.FindAllBuildCache(4, cond, cache)          # 4 = all descendants
+        elements, sensitive = [], []
+        for i in range(min(found.Length, 600)):
+            el = found.GetElement(i)
+            try:
+                r = el.CachedBoundingRectangle
+                rect = (r.left, r.top, r.right, r.bottom)
+                if rect[2] - rect[0] < 4 or rect[3] - rect[1] < 4:
+                    continue
+                ctype, name = el.CachedControlType, (el.CachedName or "").strip()
+                if is_sensitive(el.CachedIsPassword, name, el.CachedAutomationId, el.CachedHelpText):
+                    sensitive.append(rect)
+                    elements.append({"type": ctype, "name": "(private field)", "rect": rect})
+                    continue
+                if not name and ctype != EDIT:
+                    continue
+                elements.append({"type": ctype, "name": name[:60], "rect": rect})
+            except Exception:
+                continue
+        return {"elements": elements, "sensitive": sensitive}
 
     @staticmethod
     def _sensitive_fields(uia, U):

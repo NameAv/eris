@@ -81,7 +81,19 @@ updates come from here, so protect it.
 |--------|------|-------|
 | **Best** (Claude Opus) | about 2 cents a step | Smartest, most accurate boxes. Needs an API key. |
 | **Cheap** (Claude Haiku) | about 40x less | $5 lasts thousands of steps. Needs an API key. |
-| **Free** (local, Ollama) | free | Runs on your PC. Install [Ollama](https://ollama.com/download), run `ollama pull qwen2.5vl:7b`, click Test. Needs a graphics card with about 8 GB of memory; less smart than Claude. |
+| **Free** (local, Ollama) | free | Runs on your PC. Install [Ollama](https://ollama.com/download), pick a model in Settings, then Brain, and paste its download command into Command Prompt. `qwen3-vl:8b` is recommended for a 12 GB graphics card. |
+
+### Getting the most out of the Free brain
+
+- **Pick-by-number boxes.** Windows lists the clickable things on screen (buttons, links, boxes) with
+  exact positions. Eris gives the AI that numbered list, so it picks one by number instead of
+  guessing pixels. That's exact, and much easier for a small model. Unity doesn't share this list,
+  so there she points by sight and the box gets snapped onto real edges.
+- **Keep it on the graphics card.** Settings, then Brain, shows how much of the model fits. If it
+  says less than 100% (Unity uses graphics memory too), click **Make Ollama lighter**, close
+  GPU-heavy apps, or use `qwen3-vl:4b`.
+- She uses short instructions written for small models, steady answers, and short memory, and
+  keeps the model loaded for an hour.
 
 ## Voice
 
@@ -114,6 +126,7 @@ If it can't connect, Eris switches to the built-in Windows voice by herself. Use
 - `eris/protocol.py`: parses `BOX / SAY / WAIT / DONE` lines as they stream in
 - `eris/privacy.py`: looking away from and blacking out private fields
 - `eris/glowbox.py`: the rounded, glowing box
+- `eris/elements.py`: Windows' numbered list of clickable things
 - `eris/snap.py`: snaps boxes onto real edges (pixels)
 - `eris/uia.py`: asks Windows for exact element rectangles
 - `eris/watcher.py`: notices when your screen changes while she's waiting

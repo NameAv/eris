@@ -37,6 +37,9 @@ def parse_line(line: str):
             x1, y1, x2, y2 = nums
             return Event("box", (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)))
         return None
+    if head == "ELEMENT":
+        num = rest.strip("[]#. ").split(" ")[0].strip("[]#.")
+        return Event("element", int(num)) if num.isdigit() else None
     if head == "NOBOX":
         return Event("nobox")
     if head == "SAY":

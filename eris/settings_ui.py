@@ -270,11 +270,43 @@ class SettingsWindow(ctk.CTkToplevel):
                 "https://ollama.com/download")).pack(side="left")
             self.button(steps, "2. Copy the download command", self._copy_pull).pack(side="left", padx=8)
             self.button(steps, "Check again", self._check_ollama).pack(side="right")
-            right = self.row(c, "Model", "Any Ollama vision model. qwen2.5vl:7b is a good fit for a 12 GB card.")
-            e = self.entry(right, config.LOCAL_MODEL, "LOCAL_MODEL", "qwen2.5vl:7b",
+            self.gpu_status = self.status_line(c)
+
+            c = self.card("Model", "Pick one, then copy its download command into Command Prompt "
+                                   "(only needed once per model).")
+            self.installed = []
+            for name, size, about in config.LOCAL_MODELS:
+                chosen = config.LOCAL_MODEL == name
+                r = ctk.CTkFrame(c, fg_color=T.CARD_2 if chosen else T.CARD, corner_radius=12,
+                                 border_width=2, border_color=T.ACCENT if chosen else T.BORDER)
+                r.pack(fill="x", pady=3)
+                txt = ctk.CTkFrame(r, fg_color="transparent")
+                txt.pack(side="left", fill="x", expand=True, padx=12, pady=8)
+                ctk.CTkLabel(txt, text=f"{name}   ·   {size}", font=font(14, "bold"),
+                             text_color=T.TEXT, anchor="w").pack(fill="x")
+                ctk.CTkLabel(txt, text=about, font=font(12), text_color=T.MUTED, anchor="w",
+                             justify="left", wraplength=330).pack(fill="x")
+                btns = ctk.CTkFrame(r, fg_color="transparent")
+                btns.pack(side="right", padx=8)
+                self.button(btns, "Copy download", lambda n=name: self._copy_pull(n), width=120).pack(pady=2)
+                if not chosen:
+                    self.button(btns, "Use this", lambda n=name: (self.set(LOCAL_MODEL=n), self.show("brain")),
+                                primary=True, width=120).pack(pady=2)
+            right = self.row(c, "Or another model", "Any Ollama vision model name.")
+            e = self.entry(right, config.LOCAL_MODEL, "LOCAL_MODEL", "qwen3-vl:8b",
                            on_saved=lambda _v: self._check_ollama())
             e.configure(width=200)
             e.pack()
+
+            c = self.card("Speed", "Unity uses your graphics card's memory too. If the model doesn't "
+                                   "fully fit, part of it runs on your processor and she gets much slower.")
+            right = self.row(c, "Make Ollama lighter", "Turns on two Ollama settings (flash attention and "
+                                                       "a compressed memory cache) that roughly halve the "
+                                                       "extra memory she needs. Restart Ollama afterwards.")
+            self.button(right, "Apply", self._lighten_ollama, primary=True, width=90).pack()
+            self.lighten_status = self.status_line(c)
+            self.muted(c, "Other tips: close other games or GPU-heavy apps while you work, or pick "
+                          "qwen3-vl:4b above if it still doesn't fit.")
             self._check_ollama()
         else:
             c = self.card("API key", "Get one at console.anthropic.com. Stored only on this PC.")
@@ -328,25 +360,60 @@ class SettingsWindow(ctk.CTkToplevel):
             self._ui(lambda: self.key_status.configure(text=msg, text_color=colour))
         threading.Thread(target=work, daemon=True).start()
 
-    def _copy_pull(self):
+    def _copy_pull(self, name=None):
         self.clipboard_clear()
-        self.clipboard_append(f"ollama pull {config.LOCAL_MODEL}")
+        self.clipboard_append(f"ollama pull {name or config.LOCAL_MODEL}")
         self.toast("✓ Copied. Paste it into Command Prompt.")
 
     def _check_ollama(self):
         self.ollama_status.configure(text="Checking Ollama...", text_color=T.MUTED)
+        if hasattr(self, "gpu_status"):
+            self.gpu_status.configure(text="")
         want = config.LOCAL_MODEL
 
         def work():
+            from .brain import gpu_fit
             models = local_models()
+            gpu = None
             if models is None:
                 msg, colour = "✗ Ollama isn't running. Install it (step 1) and open it.", T.ERROR
             elif not any(m == want or m.split(":")[0] == want for m in models):
                 msg, colour = (f"✓ Ollama is running   ✗ {want} isn't downloaded yet (step 2).", T.GOLD)
             else:
                 msg, colour = f"✓ Ollama is running   ✓ {want} is ready. Eris thinks for free.", "#4fd18b"
-            self._ui(lambda: self.ollama_status.configure(text=msg, text_color=colour))
+                fit = gpu_fit(want)
+                if fit is None:
+                    gpu = ("Graphics card: the model isn't loaded right now (it loads when you ask "
+                           "something).", T.MUTED)
+                elif fit >= 0.97:
+                    gpu = ("✓ 100% on your graphics card: full speed.", "#4fd18b")
+                else:
+                    gpu = (f"⚠ Only {fit:.0%} fits on your graphics card, so she's slower. Try "
+                           "Make Ollama lighter below, close GPU-heavy apps, or a smaller model.", T.GOLD)
+
+            def show():
+                self.ollama_status.configure(text=msg, text_color=colour)
+                if gpu and hasattr(self, "gpu_status") and self.gpu_status.winfo_exists():
+                    self.gpu_status.configure(text=gpu[0], text_color=gpu[1])
+            self._ui(show)
         threading.Thread(target=work, daemon=True).start()
+
+    def _lighten_ollama(self):
+        """Set Ollama's flash attention + 8-bit memory cache for this Windows user."""
+        import subprocess
+        import sys
+        if sys.platform != "win32":
+            self.lighten_status.configure(text="This is for Windows.", text_color=T.MUTED)
+            return
+        try:
+            for name, value in (("OLLAMA_FLASH_ATTENTION", "1"), ("OLLAMA_KV_CACHE_TYPE", "q8_0")):
+                subprocess.run(["setx", name, value], capture_output=True, check=True,
+                               creationflags=0x08000000)
+            self.lighten_status.configure(
+                text="✓ Done. Now restart Ollama: right-click the llama icon by the clock, click "
+                     "Quit Ollama, then open Ollama again.", text_color="#4fd18b")
+        except Exception as e:
+            self.lighten_status.configure(text=f"Couldn't change it: {e}", text_color=T.ERROR)
 
     def _page_voice(self):
         c = self.card()
@@ -419,8 +486,11 @@ class SettingsWindow(ctk.CTkToplevel):
         self.button(c, "Test the box", self._test_box, primary=True).pack(anchor="w", pady=(12, 0))
 
         c = self.card("Pointing")
-        self.switch(c, "Extra-precise boxes", "She zooms in and snaps the box exactly onto the thing to click.",
-                    "REFINE")
+        self.switch(c, "Use Windows' button list", "Windows tells her the exact position of buttons, "
+                    "links and boxes in most apps and browsers, so she can point perfectly. "
+                    "(Unity doesn't share this, so there she points by sight.)", "ELEMENTS")
+        self.switch(c, "Extra-precise boxes", "When pointing by sight, she zooms in and snaps the "
+                    "box exactly onto the thing to click. Uses a little more AI.", "REFINE")
         self.switch(c, "Watch what I do", "She notices when your screen changes and carries on from there.",
                     "WATCH")
         right = self.row(c, "Box hides itself after")

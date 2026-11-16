@@ -115,7 +115,7 @@ class App(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self._quit)
         threading.Thread(target=self.check_updates, daemon=True).start()
         if config.BRAIN == "local":   # load the local model into the graphics card now
-            threading.Thread(target=self.eris.brain.prewarm, daemon=True).start()
+            threading.Thread(target=self.load_local_brain, daemon=True).start()
         if config.BRAIN != "local" and not settings.api_key():
             self.after(700, self.open_settings)
 
@@ -549,6 +549,22 @@ class App(ctk.CTk):
             self.cmd("update_failed")
         threading.Thread(target=work, daemon=True).start()
 
+    def load_local_brain(self):
+        """Load the free brain onto the graphics card, then check it actually fits:
+        if part of it spills onto the processor, every answer gets several times slower."""
+        from .brain import gpu_fit
+        self.log("info", f"Loading {config.LOCAL_MODEL} onto your graphics card...")
+        self.eris.brain.prewarm()
+        fit = gpu_fit()
+        if fit is None:
+            self.log("info", "Free brain: couldn't reach Ollama. Is it running?")
+        elif fit < 0.97:
+            self.log("hint", f"Only {fit:.0%} of my brain fits on your graphics card (something "
+                             "else, like Unity, is using its memory), so I'll be slower. "
+                             "Settings → Brain has fixes.")
+        else:
+            self.log("info", "Free brain ready, 100% on your graphics card.")
+
     # ---------- settings ----------
     def on_settings_changed(self, keys):
         """Apply a setting the moment it changes (the settings window saves instantly)."""
@@ -558,10 +574,11 @@ class App(ctk.CTk):
         if keys & {"TALK_KEY", "NEXT_KEY", "CANCEL_KEY"}:
             self._update_hint()
             self._set_state("ready")
-        if "BRAIN" in keys:
+        if "BRAIN" in keys or ("LOCAL_MODEL" in keys and config.BRAIN == "local"):
             self._set_state("ready")
             if config.BRAIN == "local":
-                threading.Thread(target=self.eris.brain.prewarm, daemon=True).start()
+                self.eris.brain.last_call = 0      # a new model: load it now
+                threading.Thread(target=self.load_local_brain, daemon=True).start()
         if "WHISPER_MODEL" in keys:
             self.eris.load_ears()
         if keys & {"VOICE_NAME", "VOICE_ENGINE"}:

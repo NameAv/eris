@@ -9,7 +9,9 @@ import traceback
 
 from pynput import keyboard
 
-from . import config, privacy, screen, settings, snap
+import sys
+
+from . import config, elements, privacy, screen, settings, snap
 from .brain import Brain, locate
 from .speech import Voice, beep
 from .watcher import Watcher
@@ -243,7 +245,7 @@ class Eris:
                 return
             now = time.time() - t0
             times.setdefault("first reply", now)
-            if ev.kind == "box":
+            if ev.kind in ("box", "element"):
                 times.setdefault("box", now)
             elif ev.kind == "say":
                 times.setdefault("first words", now)
@@ -267,9 +269,21 @@ class Eris:
                     self.waiting = None
                     self.auto_looks = 0
                     self.voice.stop()
-                    if ev.kind != "box":
+                    if ev.kind not in ("box", "element"):
                         self._clear()
-            if ev.kind == "box":
+            if ev.kind == "element":
+                exact = elements.rect(shot.elements, ev.value)
+                if exact:   # Windows' own rectangle: already perfect, no snapping needed
+                    self.box = st["final"] = exact
+                    self.box_gen = my
+                    self.early_click = None
+                    st["refining"] = True
+                    st["snapped"].set()
+                    self.ui.cmd("box", *exact)
+                    self.ui.log("debug", f"box: element {ev.value} {shot.elements[ev.value - 1]}")
+                else:
+                    self.ui.log("debug", f"box: element {ev.value} isn't in the list")
+            elif ev.kind == "box":
                 self.box = st["final"] = shot.to_screen(ev.value)
                 self.box_gen = my
                 self.early_click = None
@@ -344,15 +358,43 @@ class Eris:
         self.pre_shot = self.pre_token = None
         if allow_pre and pre and pre[0] is token and time.time() - pre[1] < 4:
             return pre[2]
-        return screen.grab(snap=self.brain.snap(), max_w=self.brain.shot_width(),
-                           hide=privacy.hidden_fields())
+        return self._shoot()
+
+    def _shoot(self):
+        """Screenshot + Windows' list of clickable things, fetched at the same time.
+        Private fields found by the scan are blacked out before anything leaves the PC."""
+        scan = {}
+
+        def ask_windows():
+            try:
+                from . import uia
+                scan.update(uia.get().scan() or {})
+            except Exception:
+                pass
+        helper = None
+        if sys.platform == "win32" and (config.PRIVACY or config.ELEMENTS):
+            helper = threading.Thread(target=ask_windows, daemon=True)
+            helper.start()
+        img, mon = screen.capture()
+        if helper:
+            helper.join(1.0)
+        hide = scan.get("sensitive")
+        if hide is None:            # Windows didn't answer: fall back to the field check
+            hide = privacy.hidden_fields()
+        if not config.PRIVACY:
+            hide = []
+        shot = screen.finish(img, mon, snap=self.brain.snap(), max_w=self.brain.shot_width(),
+                             hide=hide)
+        if config.ELEMENTS:
+            shot.elements = elements.pick(scan.get("elements"), (mon["left"], mon["top"],
+                                                                 mon["width"], mon["height"]))
+        return shot
 
     def _prepare_shot(self, token):
         """Take the screenshot while your words are still being transcribed."""
         try:
             if not privacy.should_look_away():
-                shot = screen.grab(snap=self.brain.snap(), max_w=self.brain.shot_width(),
-                                   hide=privacy.hidden_fields())
+                shot = self._shoot()
                 if token is self.pre_token:      # still the same question
                     self.pre_shot = (token, time.time(), shot)
         except Exception:

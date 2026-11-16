@@ -24,6 +24,7 @@ class Shot:
     img_w: int
     img_h: int
     full: object = field(default=None, repr=False)   # full-sharpness PIL image of the monitor
+    elements: list = field(default_factory=list)     # Windows' clickable things (see elements.py)
 
     def to_screen(self, box):
         """Image coords from the brain -> real desktop coords, clamped and padded."""
@@ -87,13 +88,22 @@ def _black_out(img, rects, mon):
         d.text((a + 6, b + max(2, (e - b) // 2 - 6)), "hidden", fill=(200, 200, 200))
 
 
-def grab(snap=1, max_w=None, hide=()) -> Shot:
-    """snap=28 makes both sides multiples of 28, which local Qwen-VL models
-    need so their coordinates line up exactly with the image we sent."""
+def capture():
+    """The raw screen of the monitor your mouse is on (stays on your PC until finish())."""
     with new_sct() as sct:
         mon = monitor_under_mouse(sct)
         raw = sct.grab(mon)
-    img = Image.frombytes("RGB", raw.size, raw.bgra, "raw", "BGRX")
+    return Image.frombytes("RGB", raw.size, raw.bgra, "raw", "BGRX"), mon
+
+
+def grab(snap=1, max_w=None, hide=()) -> Shot:
+    img, mon = capture()
+    return finish(img, mon, snap, max_w, hide)
+
+
+def finish(img, mon, snap=1, max_w=None, hide=()) -> Shot:
+    """Black out private fields, shrink and encode. snap=28 makes both sides multiples
+    of 28, which Qwen2.5-VL needs so its coordinates line up with the image we sent."""
     if hide:   # before anything else touches it, so private fields never leave the PC
         _black_out(img, hide, mon)
     full = img

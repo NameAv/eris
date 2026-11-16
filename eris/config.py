@@ -5,8 +5,13 @@ BRAIN = "claude"        # "claude" (best), "claude-cheap" (Haiku, ~40x cheaper),
 API_KEY = ""            # set in the app: Settings -> API key
 MODEL = "claude-opus-5-5"
 CHEAP_MODEL = "claude-haiku-5-5"
-LOCAL_MODEL = "qwen2.5vl:7b"   # any Ollama vision model
+LOCAL_MODEL = "qwen3-vl:8b"    # any Ollama vision model (see LOCAL_MODELS for good ones)
 OLLAMA_URL = "http://localhost:11434"
+LOCAL_MODELS = [   # (name, download size, what it's like) - shown in Settings
+    ("qwen3-vl:8b", "6 GB", "Recommended. Smartest and best at finding things on screen."),
+    ("qwen2.5vl:7b", "6 GB", "The older one. Good, a bit less accurate."),
+    ("qwen3-vl:4b", "3.3 GB", "Fastest and lightest. Less accurate. Good if Unity needs the memory."),
+]
 EFFORT = "low"          # low = fastest replies. Try "medium" if steps get sloppy.
 FAST_MODE = False       # True = up to ~2.5x faster output, but costs 2x per token.
 MAX_TOKENS = 4000        # room for her (hidden) thinking plus the short reply
@@ -45,6 +50,7 @@ PRIVACY = True          # look away from password/email/card fields, black them 
 PRIVATE_APPS = ["1Password", "Bitwarden", "KeePass", "LastPass", "Dashlane",
                 "NordPass", "Proton Pass", "Authenticator", "Credential Manager"]
 USE_UIA = True          # ask Windows for exact element edges (browsers, most apps)
+ELEMENTS = True         # give the AI Windows' numbered list of clickable things (exact boxes)
 REFINE = True           # zoom in to snap the box exactly onto the target
 WATCH = True            # watch the screen while waiting and react to what you do
 PANEL_ON_TOP = False    # keep the Eris window above other windows

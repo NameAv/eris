@@ -1,8 +1,8 @@
 """Eris's voice.
 
 "natural": Microsoft's free neural voices (the ones Edge's Read Aloud uses), via
-edge-tts. No key needed, but needs internet. The next sentence is generated
-while the current one plays, so there are no gaps.
+edge-tts. No key needed, but needs internet. Every sentence starts being made the
+moment it arrives (a few at once) and they play in order, so there are no gaps.
 "windows": the built-in Windows voice. Offline, instant, but robotic.
 If natural fails (offline etc.) Eris falls back to the Windows voice by herself.
 """
@@ -30,22 +30,37 @@ ACKS = ["Mm-hm.", "On it.", "Okay, let me look.", "Sure thing.", "One sec."]
 PREVIEW = "Hi, I'm Eris. Ask me anything, and I'll show you exactly where to click."
 
 
+class _Clip:
+    """One line on its way to being spoken: made in the background, played in order."""
+
+    def __init__(self, gen, text="", path=None, voice=None):
+        self.gen, self.text, self.path, self.voice = gen, text, path, voice
+        self.failed = self.skip = False
+        self.ready = threading.Event()
+        if path:
+            self.ready.set()
+
+
 class Voice:
+    MAKERS = 3                     # sentences made at the same time
+
     def __init__(self, log=None):
         self.log = log or (lambda *a: None)
         self.gen = 0
-        self.text_q = queue.Queue()
-        self.audio_q = queue.Queue()
+        self.audio_q = queue.Queue()   # clips, in the order they're said
         self.sapi_q = queue.Queue()
         self.tmp = tempfile.mkdtemp(prefix="eris-voice-")
         self.warned = False
         self.natural_off_until = 0.0   # after a failure, use the Windows voice for a bit
-        self.playing = False           # a natural-voice clip is playing right now
-        self.fetching = False          # a sentence is being turned into speech right now
+        self.playing = False           # a natural-voice clip is playing (or about to) right now
+        self.fetching = 0              # sentences being turned into speech right now
+        self._makers = threading.Semaphore(self.MAKERS)
+        self._n = 0
+        self._lock = threading.Lock()
         self._first = None             # (gen, time) of the first line queued since the last stop
         self.sapi_speaking = False     # the Windows voice is speaking right now
+        self.sapi_alive = False        # the Windows voice is up and running
         threading.Thread(target=self.prepare_acks, daemon=True).start()
-        threading.Thread(target=self._synth_loop, daemon=True).start()
         threading.Thread(target=self._play_loop, daemon=True).start()
         threading.Thread(target=self._sapi_loop, daemon=True).start()
 
@@ -57,7 +72,9 @@ class Voice:
         if self._first is None or self._first[0] != self.gen:
             self._first = (self.gen, time.time())
         if self._natural():
-            self.text_q.put((self.gen, text, voice))
+            clip = _Clip(self.gen, text, voice=voice)
+            self.audio_q.put(clip)
+            threading.Thread(target=self._make, args=(clip,), daemon=True).start()
         else:
             self.sapi_q.put(("say", text))
 
@@ -68,7 +85,7 @@ class Voice:
             return
         clips = self._ack_clips()
         if self._natural() and clips:
-            self.audio_q.put((self.gen, random.choice(clips)))
+            self.audio_q.put(_Clip(self.gen, path=random.choice(clips)))
         elif not self._natural():
             self.sapi_q.put(("say", random.choice(ACKS)))
 
@@ -106,51 +123,60 @@ class Voice:
 
     def busy(self):
         """Is she talking (or about to)? Call mode doesn't listen while she is."""
-        return (self.playing or self.fetching or self.sapi_speaking or not self.text_q.empty()
-                or not self.audio_q.empty() or not self.sapi_q.empty())
+        return (self.playing or self.fetching > 0 or self.sapi_speaking or not self.audio_q.empty()
+                or self.sapi_alive and any(cmd == "say" for cmd, _ in list(self.sapi_q.queue)))
 
     def stop(self):
+        """Stop talking now (a new task, Stop, a new question)."""
         self.gen += 1
-        for q in (self.text_q, self.audio_q, self.sapi_q):
-            try:
-                while True:
-                    q.get_nowait()
-            except queue.Empty:
-                pass
+        self._drain()
         self.sapi_q.put(("stop", None))
 
+    def skip_queued(self):
+        """Drop what she hasn't started saying yet, but let her finish the sentence she's
+        on: for when she has something newer to say, without cutting herself off."""
+        self._drain()
+
+    def _drain(self):
+        for q in (self.audio_q, self.sapi_q):
+            try:
+                while True:
+                    item = q.get_nowait()
+                    if isinstance(item, _Clip):
+                        item.skip = True
+            except queue.Empty:
+                pass
+
     # ---------- natural voice ----------
-    def _synth_loop(self):
-        loop = asyncio.new_event_loop()
-        n = 0
-        while True:
-            g, text, voice = self.text_q.get()
-            if g != self.gen:
-                continue
-            if time.time() < self.natural_off_until:   # already queued, but server is down
-                self.sapi_q.put(("say", text))
-                continue
-            n += 1
-            path = os.path.join(self.tmp, f"s{n % 50}.mp3")
-            self.fetching = True
+    def _make(self, clip):
+        """Turn one line into speech (several run at once; each waits for a free maker)."""
+        with self._makers:
+            if clip.skip or clip.gen != self.gen or time.time() < self.natural_off_until:
+                clip.failed = True           # dropped, or the server is down (Windows voice)
+                clip.ready.set()
+                return
+            with self._lock:
+                self._n += 1
+                self.fetching += 1
+                clip.path = os.path.join(self.tmp, f"s{self._n % 50}.mp3")
             try:
                 import edge_tts
                 rate = f"{int(config.VOICE_RATE) * 6:+d}%"
-                comm = edge_tts.Communicate(text, voice or config.VOICE_NAME, rate=rate)
-                loop.run_until_complete(asyncio.wait_for(comm.save(path), 6))
-                self.audio_q.put((g, path))
+                comm = edge_tts.Communicate(clip.text, clip.voice or config.VOICE_NAME, rate=rate)
+                asyncio.run(asyncio.wait_for(comm.save(clip.path), 6))
             except Exception as e:
                 # Don't make every sentence wait for a slow/offline server: switch to
                 # the Windows voice for a minute, then try the natural one again.
+                clip.failed = True
                 self.natural_off_until = time.time() + 60
                 if not self.warned:
                     self.warned = True
                     self.log("hint", f"Natural voice unavailable ({e.__class__.__name__}), "
                                      "using the Windows voice. Needs internet.")
-                if g == self.gen:
-                    self.sapi_q.put(("say", text))
             finally:
-                self.fetching = False
+                with self._lock:
+                    self.fetching -= 1
+                clip.ready.set()
 
     def _play_loop(self):
         if sys.platform != "win32":
@@ -159,10 +185,20 @@ class Voice:
         mci = ctypes.windll.winmm.mciSendStringW
         buf = ctypes.create_unicode_buffer(64)
         while True:
-            g, path = self.audio_q.get()
-            if g != self.gen:
+            clip = self.audio_q.get()
+            g = clip.gen
+            if g != self.gen or clip.skip:
                 continue
             self.playing = True
+            while not clip.ready.wait(0.05):          # still being made
+                if g != self.gen or clip.skip:
+                    break
+            if g != self.gen or clip.skip or clip.failed:
+                if g == self.gen and not clip.skip and clip.text:
+                    self.sapi_q.put(("say", clip.text))   # natural voice failed: Windows voice
+                self.playing = False
+                continue
+            path = clip.path
             if self._first and self._first[0] == g and "ack" not in os.path.basename(path):
                 self.log("debug", f"speed: voice started {time.time() - self._first[1]:.2f}s "
                                   "after her first line arrived (natural voice)")
@@ -183,12 +219,19 @@ class Voice:
 
     # ---------- Windows voice ----------
     def _sapi_loop(self):
+        try:
+            self._run_windows_voice()
+        finally:
+            self.sapi_alive = False     # it stopped: queued lines can't be spoken, so don't wait on them
+
+    def _run_windows_voice(self):
         if sys.platform != "win32":
             try:
                 import pyttsx3
                 engine = pyttsx3.init()
             except Exception:
                 return
+            self.sapi_alive = True
             while True:
                 cmd, text = self.sapi_q.get()
                 if cmd == "say":
@@ -198,6 +241,7 @@ class Voice:
         import win32com.client
         pythoncom.CoInitialize()
         voice = win32com.client.Dispatch("SAPI.SpVoice")
+        self.sapi_alive = True
         try:  # prefer a female voice if one is installed (e.g. Zira)
             for v in voice.GetVoices():
                 if "zira" in v.GetDescription().lower():

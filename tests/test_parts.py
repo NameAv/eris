@@ -170,6 +170,76 @@ def test_box_windows_share_their_setup():
           "class BLEND" not in inspect.getsource(glowbox.GlowBox.__init__))
 
 
+def test_voice_makes_sentences_side_by_side():
+    import sys as _sys
+    from eris import speech
+
+    class Communicate:              # a stand-in for the online voice: each line takes 0.3s
+        def __init__(self, text, voice, rate=None):
+            self.text = text
+
+        async def save(self, path):
+            import asyncio
+            await asyncio.sleep(0.3)
+            open(path, "w").write(self.text)
+    _sys.modules["edge_tts"] = types.SimpleNamespace(Communicate=Communicate)
+    v = speech.Voice()
+    clips = [speech._Clip(v.gen, f"line {i}") for i in range(3)]
+    start = time.time()
+    threads = [threading.Thread(target=v._make, args=(c,)) for c in clips]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    took = time.time() - start
+    check("three sentences are made side by side, not one after another",
+          took < 0.75 and all(c.ready.is_set() and not c.failed for c in clips), f"{took:.2f}s")
+    queued = speech._Clip(v.gen, "later")
+    v.audio_q.put(queued)
+    gen = v.gen
+    v.skip_queued()
+    check("something newer to say: the queued line is dropped, the current one isn't cut",
+          queued.skip and v.gen == gen)
+    v.stop()
+    check("Stop cuts her off", v.gen == gen + 1)
+    del _sys.modules["edge_tts"]
+
+
+def test_tracking_needs_something_to_follow():
+    from eris import tracker
+    W, H = 1200, 800
+    page = Image.new("RGB", (W, H), "#2b2b2b")
+    d = ImageDraw.Draw(page)
+    d.rectangle((300, 300, 700, 340), fill="#2e2e2e")         # an almost empty panel strip
+    check("an empty patch isn't tracked (it would match other empty patches)",
+          tracker.Tracker.make(page, 0, 0, (296, 296, 704, 344)) is None)
+    for y in (100, 400):                                       # two identical buttons
+        d.rounded_rectangle((500, y, 700, y + 40), 6, fill="#1a73e8")
+        d.text((540, y + 10), "Add Component", fill="white", font=_font(18))
+    t = tracker.Tracker.make(page, 0, 0, (496, 96, 704, 144))
+    moved = Image.new("RGB", (W, H), "#2b2b2b")
+    moved.paste(page, (0, 150))                                # both move far from the old spot
+    result, box = t.find(tracker.grey(moved), 0, 0)
+    check("two places match equally well, far from where it was: it doesn't guess",
+          result == "same" and box == (496, 96, 704, 144), (result, box))
+
+
+def test_box_shows_straight_away():
+    from eris import glowbox
+    drawn, faded = [], []
+    g = glowbox.GlowBox.__new__(glowbox.GlowBox)
+    jobs = []
+    g.master = types.SimpleNamespace(after=lambda ms, fn: jobs.append(fn) or len(jobs), after_cancel=lambda j: None)
+    g.jobs, g.alpha = [], 255
+    g._draw = lambda alpha=255: drawn.append(alpha)
+    g._set_alpha = lambda a: faded.append(a)
+    g.show((10, 10, 200, 40), "", "button", 1)
+    check("a new box is drawn at once, a single time", drawn == [140])
+    for fn in jobs:
+        fn()
+    check("...then just fades up to full", faded == [200, 240, 255] and len(drawn) == 1)
+
+
 def test_glitch_banner():
     from eris import config, glitch
     s = glitch.Streaks(480, 44)

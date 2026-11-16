@@ -153,7 +153,8 @@ class Watcher:
     def _ready(self):
         e = self.eris
         return (config.WATCH and e.active and e.waiting and not e.busy and e.mon
-                and e.auto_looks < MAX_LOOKS_PER_STEP)
+                and e.auto_looks < MAX_LOOKS_PER_STEP
+                and not e.voice.busy())          # let her finish talking before she looks again
 
     def _private(self):
         """Typing a password / using a private app? Asked at most twice a second (it's

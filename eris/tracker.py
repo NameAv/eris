@@ -18,7 +18,8 @@ from . import config
 
 INK = 40            # grey difference (0-255) that makes a pixel part of the text/edges
 SAME = 0.03         # share of those that may change and still be "unchanged" (a caret)
-MATCH = 0.86        # match score (up to 1.0) needed to say "that's it"
+MATCH = 0.9         # match score (up to 1.0) needed to say "that's it"
+MIN_INK = 0.03      # a target needs this much detail (text, edges, icons) to be followed
 COARSE = 0.5        # ...on the shrunk copy (thin text blurs there; the exact check decides)
 CANDIDATES = 12     # spots compared pixel-exact before choosing
 CLOSE = 0.01        # pixel-exact matches this close to the best count as equally good
@@ -26,6 +27,7 @@ INSET = 3           # px kept clear inside the box's own outline and glow
 MAX_W, MAX_H = 320, 120   # a bigger target is recognised by its middle (keeps it quick)
 
 SAME_SPOT, MOVED, GONE = "same", "moved", "gone"
+AMBIGUOUS = "ambiguous"     # several places match equally well: don't guess
 
 
 def grey(img):
@@ -110,8 +112,9 @@ class Tracker:
         if x2 - x1 < 8 or y2 - y1 < 6 or cx1 < 0 or cy1 < 0 or x2 - left > full.width or y2 - top > full.height:
             return None
         pic = grey(full.crop((cx1, cy1, x2 - left, y2 - top)))
-        if pic.std() < 8:
-            return None
+        detail = int((np.abs(pic - np.median(pic)) > INK).sum())
+        if pic.std() < 10 or detail < max(30, MIN_INK * pic.size):
+            return None          # an empty patch: it would "match" lookalike empty patches
         return cls(pic, box, (x1 - box[0], y1 - box[1]))
 
     def _score(self, patch):
@@ -128,6 +131,8 @@ class Tracker:
         if here is not None and (np.abs(here - self.seen) > INK).sum() <= max(3, SAME * self.ink):
             return SAME_SPOT, self.box
         spot = self._search(img, px, py)
+        if spot is AMBIGUOUS:
+            return SAME_SPOT, self.box      # leave the box where it is rather than guess
         if spot is None:
             return GONE, self.box
         dx, dy = spot[0] - px, spot[1] - py
@@ -157,7 +162,12 @@ class Tracker:
             return None
         top = max(b for b, _ in found)
         near = [sp for b, sp in found if b >= top - CLOSE]
-        return min(near, key=lambda sp: (sp[0] - near_x) ** 2 + (sp[1] - near_y) ** 2)
+        if len(near) > 1:          # several equally good: only follow if one is right by the old spot
+            close = [sp for sp in near if abs(sp[0] - near_x) <= w and abs(sp[1] - near_y) <= h]
+            if len(close) != 1:
+                return AMBIGUOUS
+            return close[0]
+        return near[0]
 
     def _best_near(self, img, x0, y0, reach, step):
         h, w = self.picture.shape

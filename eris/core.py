@@ -18,8 +18,9 @@ from .watcher import Watcher, changed as screen_changed
 
 WATCH_PROMPT = ("(Automatic look: my screen changed while you were waiting.) Here's my screen "
                 "now. If the step is done, give the next step, or DONE if the task is finished. "
-                "If I'm still partway through or nothing important changed, reply with just KEEP. "
-                "If I did something different, briefly tell me and guide me back.")
+                "If I haven't done it yet, I'm partway through or nothing important changed, reply "
+                "with just KEEP (don't repeat the step). If I did something different, briefly "
+                "tell me and guide me back.")
 MAX_LOOKS_PER_TASK = 30
 
 WRONG_BOX_PROMPT = ("That box was on the wrong thing. Here's my screen again. Look carefully, "
@@ -221,7 +222,7 @@ class Eris:
         if t is not None and text and (not t["steps"] or t["steps"][-1] != text):
             t["steps"].append(text)
             if t["plan"]:                  # "Step 2 of 4" under the chat
-                n = min(self.steps + 1, len(t["plan"]))
+                n = min(len(t["steps"]), len(t["plan"]))
                 self.ui.log("info", f"Step {n} of {len(t['plan'])}: {t['plan'][n - 1]}")
 
     def _set_plan(self, text):
@@ -752,7 +753,7 @@ class Step:
                 e = self.e
                 e.waiting = None
                 e.auto_looks = 0
-                e.voice.stop()
+                e.voice.skip_queued()      # finish the sentence she's on, then the new step
                 if ev.kind not in ("box", "element"):
                     e._clear()
         handler = getattr(self, "on_" + ev.kind, None)

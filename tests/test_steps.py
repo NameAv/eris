@@ -158,6 +158,14 @@ def test_learning_from_experience():
     recipes.forget()
 
 
+def test_no_new_look_while_she_talks():
+    e, _, _ = make_eris()
+    e.waiting, e.mon = "next", (0, 0, 100, 100)
+    check("the watcher may look when she's quiet", e.watcher._ready())
+    e.voice.busy = lambda: True
+    check("...but waits while she's still talking", not e.watcher._ready())
+
+
 def test_checking_a_step():
     import numpy as np
     e, ui, _ = make_eris()

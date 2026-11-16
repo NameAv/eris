@@ -10,11 +10,11 @@ from PIL import Image
 GLOW = 16          # room around the box for its glow and decorations
 
 
-def render(w, h, hint="", grow=0, kind=None, variant=0):
+def render(w, h, hint="", kind=None, variant=0):
     """The box for a w x h target (the HUD shape that suits it, see hud.py), with the
-    target at GLOW, GLOW in the picture. grow: draw it bigger (for the pop-in)."""
+    target at GLOW, GLOW in the picture."""
     from . import hud
-    return hud.box(w, h, hint, grow, GLOW, kind, variant)
+    return hud.box(w, h, hint, GLOW, kind, variant)
 
 
 def render_drop(src, dst, variant=1):
@@ -149,12 +149,12 @@ class GlowBox:
         except Exception as e:
             self._failed(e)
 
-    def _draw(self, grow=0, alpha=255):
+    def _draw(self, alpha=255):
         if self.rect is None:
             return
         x1, y1, x2, y2 = self.rect
         try:
-            img = render(x2 - x1, y2 - y1, self.hint, grow, kind=self.kind, variant=self.variant)
+            img = render(x2 - x1, y2 - y1, self.hint, kind=self.kind, variant=self.variant)
             if not self._show_image(img, x1 - GLOW, y1 - GLOW, alpha):
                 raise OSError("Windows wouldn't show the box window (UpdateLayeredWindow failed)")
         except Exception as e:
@@ -175,14 +175,19 @@ class GlowBox:
 
     # ---- public ----
     def show(self, rect, hint="", kind=None, variant=0):
-        """Pop in: starts a little bigger and transparent, settles onto the target.
+        """Show it straight away (drawn once), then fade it up to full brightness.
         kind: what it is ("button", "text box"...), for the HUD box's shape."""
         self._cancel()
         self.rect, self.hint, self.kind, self.variant = tuple(int(v) for v in rect), hint, kind, variant
         self.shown_at = time.time()
-        frames = [(10, 90), (6, 160), (3, 220), (1, 250), (0, 255)]
-        for i, (grow, alpha) in enumerate(frames):
-            self.jobs.append(self.master.after(i * 40, lambda g=grow, a=alpha: self._draw(g, a)))
+        self._draw(140)
+        for i, alpha in enumerate((200, 240, 255), 1):
+            self.jobs.append(self.master.after(i * 35, lambda a=alpha: self._fade(a)))
+
+    def _fade(self, alpha):
+        if self.rect is not None:
+            self._set_alpha(alpha)
+            self.alpha = alpha
 
     def move(self, rect):
         if self.rect is None:

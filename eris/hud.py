@@ -252,7 +252,7 @@ def label(text, size=17, prefix=None, arrow=None):
     return cv.finish()
 
 
-def box(w, h, hint="", grow=0, glow_margin=16, kind=None, variant=0):
+def box(w, h, hint="", glow_margin=16, kind=None, variant=0):
     """The HUD box for a w x h target, laid out like glowbox.render (target at
     glow_margin, glow_margin). What to type sits on a red plate in the box's right end
     (the empty end of a search bar: you type from the left), or just beside the box
@@ -267,7 +267,7 @@ def box(w, h, hint="", grow=0, glow_margin=16, kind=None, variant=0):
         inside = kind != "ring" and w >= tag.width + 60 and h >= tag.height - 22
     width = w + 2 * G if tag is None or inside else w + G + tag.width
     cv = _Canvas(width, max(h + 2 * G, tag.height if tag else 0))
-    x1, y1, x2, y2 = G - grow, G - grow, G + w + grow, G + h + grow
+    x1, y1, x2, y2 = G, G, G + w, G + h
     SHAPES[kind](cv, x1, y1, x2, y2, red, 255, variant % VARIANTS)
     img = cv.finish()
     if tag:

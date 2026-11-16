@@ -313,15 +313,24 @@ def _connector(length, variant):
         n = max(18 + bw + 20, at(0.6))
         if n < L - 20:
             cv.arc(n, c, 4, 0, 360, col, 1.5)
-        if L > 120:
-            cv.line([(L - 30, c - 7), (L - 18, c - 7), (L - 18, c - 1), (L - 30, c - 1)], col, 1.2, closed=True)
-    else:                                 # ridged: one thin line that rises over a few bumps
-        pts = [(0, c)]
-        for f in (0.25, 0.6):
-            x = at(f)
-            pts += [(x - 11, c), (x - 5, c - 6), (x + 7, c - 6), (x + 13, c)]
-        pts.append((L, c))
+    else:                                 # peaked: a sharp peak, a notched plateau, ticks, a diamond, chevrons
+        p0 = at(0.1)
+        q1, q2 = p0 + 26, p0 + 26 + size(0.22, 110)               # the raised plateau
+        notch = (q1 + q2) / 2
+        n = max(q2 + 40, at(0.6))                                # the diamond node
+        pts = [(0, c), (p0, c), (p0 + 7, c - 9), (p0 + 14, c - 4), (q1, c - 4),
+               (notch - 4, c - 4), (notch, c - 1), (notch + 4, c - 4), (q2, c - 4), (q2 + 4, c), (n - 5, c)]
         cv.line(pts, col, 1.5)
+        t0 = q2 + 12                                             # a row of little ticks
+        for i in range(5):
+            x = t0 + i * 5
+            if x < n - 10:
+                cv.line([(x, c - 3), (x, c)], col, 1.2)
+        cv.line([(n - 5, c), (n, c - 5), (n + 5, c), (n, c + 5)], col, 1.3, closed=True)
+        cv.line([(n + 5, c), (L, c)], col, 1.5)
+        if L - 40 > n + 20:                                      # thin chevrons toward the arrow
+            for x in (L - 40, L - 32):
+                cv.line([(x, c - 4), (x + 4, c), (x, c + 4)], col, 1.3)
     return cv.finish()
 
 

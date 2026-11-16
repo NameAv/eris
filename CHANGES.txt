@@ -1,3 +1,4 @@
+v1.19.3: Drag lines: the little box near the arrow is gone, and the third design is new (a sharp peak, a notched raised stretch, ticks, a diamond and chevrons).
 v1.19.2: Each drag line is a single line now (no doubled-up lines or bars beside it).
 v1.19.1: The three drag lines are now all thin lines and outlines (no solid bars).
 v1.19.0: Neon HUD: every box shape comes in three versions (each new box takes the next), and the drag line is now one of three still HUD connector lines (stepped, rails, ridged) instead of the animated beam.

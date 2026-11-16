@@ -3,6 +3,7 @@
 Talks to the window only through ui.cmd(...) and ui.log(...), both thread-safe.
 """
 import queue
+import re
 import sys
 import threading
 import time
@@ -22,7 +23,23 @@ WATCH_PROMPT = ("(Automatic look: my screen changed while you were waiting.) Her
                 "with just KEEP (don't repeat the step). If I did something different, briefly "
                 "tell me and guide me back.")
 MAX_LOOKS_PER_TASK = 30
-SECOND_LINE = 90             # a second SAY line is read out only if it's this short (characters)
+SECOND_LINE = 90             # a short tip after the action is read out if it's this short (characters)
+ACTIONS = {"click", "double-click", "right-click", "type", "press", "hit", "scroll", "drag", "open",
+           "select", "choose", "pick", "tap", "close", "enter", "search", "hold", "move", "put", "use",
+           "switch", "go", "find", "check", "tick", "untick", "turn", "hover", "save", "copy", "paste"}
+FILLERS = {"now", "next", "then", "okay", "ok", "great", "good", "nice", "so", "alright", "right",
+           "perfect", "lovely", "awesome", "first", "and", "just"}
+
+
+def is_action(line):
+    """Does this line tell you what to do ("Click...", "Now type...")? Otherwise it's
+    commentary ("Good, the search worked...")."""
+    for word in re.findall(r"[a-z'-]+", line.lower())[:4]:
+        if word in ACTIONS:
+            return True
+        if word not in FILLERS:
+            return False
+    return False
 
 WRONG_BOX_PROMPT = ("That box was on the wrong thing. Here's my screen again. Look carefully, "
                     "point at the right one and say what it is (so I can tell it's the one).")
@@ -377,6 +394,7 @@ class Eris:
         self.brain.turn(shot, text, step.on_event, step.alive, self._notes(shot))
         step.times["done"] = time.time() - t0
         step.over = True
+        step.finish_talking()
         step.track()
         self.ui.log("debug", "speed: " + " · ".join(f"{k} {v:.2f}s" for k, v in step.times.items())
                     + f" ({config.BRAIN}{', automatic look' if soft else ''})")
@@ -742,7 +760,9 @@ class Step:
         self.snapped = threading.Event()
         self.hint = ""             # what she asked you to type (or press), shown with the box
         self.said = ""             # her first line: the instruction (kept for recipes)
-        self.spoken = 0            # SAY lines so far this step
+        self.instructed = False    # the instruction has been read out
+        self.tipped = False        # ...and a short tip after it
+        self.held = None           # her first line, if it was only commentary
         self.what = ""             # what she pointed at
         self.typed = self.key = ""
         self.dragged = False
@@ -864,13 +884,25 @@ class Step:
         e = self.e
         e.ui.cmd("status", "")
         e.ui.cmd("state", "guiding")
-        e.ui.log("eris", words)
-        self.spoken += 1
-        if self.spoken == 1 or (self.spoken == 2 and len(words) <= SECOND_LINE):
-            e.voice.say(words)            # the chat shows every line; only the first one or two are read out
+        e.ui.log("eris", words)            # the chat shows every line; only what matters is read out
+        if is_action(words) and not self.instructed:
+            self.instructed = True
+            e.voice.say(words)             # the instruction itself
+            self.said = words
+        elif self.instructed:
+            if not self.tipped and len(words) <= SECOND_LINE:
+                self.tipped = True
+                e.voice.say(words)         # one short tip after it
+        elif self.held is None:
+            self.held = words              # commentary: said only if no instruction comes
         self.said = self.said or words
         if self._my_box():   # no WHAT line: use what she said
             self.refine(words)
+
+    def finish_talking(self):
+        """No instruction in this reply (an answer to a question): say what she said."""
+        if not self.instructed and self.held and self.alive() and not self.kept:
+            self.e.voice.say(self.held)
 
     def on_wait(self, mode):
         self.ended = True

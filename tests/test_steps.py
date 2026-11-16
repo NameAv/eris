@@ -193,6 +193,22 @@ def test_she_keeps_it_short():
     check("only the first line and a short second one are read out",
           e.voice.said == ["Click Images.", "It's the tab under the search box."], e.voice.said)
     check("...every line still shows in the chat", sum(1 for l in ui.logs if l[0] == "eris") == 4)
+    e.voice.said.clear()
+    e.brain.script = ["BOX 100 100 200 130\nSAY Good, Wikipedia came up in Google. Now pick the real Wikipedia page, "
+                      "not the ad at the top, so we can get to the article.\n"
+                      "SAY Click the result titled Wikipedia, the free encyclopedia.\nWAIT click"]
+    e.ask("take me to wikipedia")
+    wait_for(lambda: e.waiting == "click")
+    check("commentary first, then the instruction: only the instruction is read out",
+          e.voice.said == ["Click the result titled Wikipedia, the free encyclopedia."], e.voice.said)
+    e.voice.said.clear()
+    e.brain.script = ["NOBOX\nSAY Unity is a game engine.\nSAY It's great for 3D games.\nDONE"]
+    e.ask("what is unity")
+    wait_for(lambda: not e.busy and e.voice.said)
+    check("an answer with no instruction is still read out", e.voice.said == ["Unity is a game engine."], e.voice.said)
+    from eris.core import is_action
+    check("instructions are told from commentary", is_action("Now click Images.") and is_action("Type car.")
+          and not is_action("Nice, the search worked.") and not is_action("Google found results."))
 
 
 def test_checking_a_step():

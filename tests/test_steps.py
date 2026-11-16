@@ -180,6 +180,21 @@ def test_waits_for_the_page_to_load():
           asked_at)
 
 
+def test_typing_and_new_screens():
+    e, ui, _ = make_eris()
+    e.waiting, e.mon = "next", (0, 0, 100, 100)
+    e.last_key = time.time()
+    check("no automatic look while you're typing", not e.watcher._ready())
+    e.watcher.nudge()
+    check("...but Enter means look now", e.watcher._ready())
+    e.watcher.rebase()
+    e.last_key = time.time() - 2
+    check("...and once you've stopped typing she looks again", e.watcher._ready())
+    e.box = (10, 10, 50, 30)
+    e.screen_moved_on()
+    check("a new screen takes the old box down", ("clear_box",) in ui.cmds and e.track is None)
+
+
 def test_she_keeps_it_short():
     e, ui, _ = make_eris()
     e.waiting, e.mon = "next", (0, 0, 100, 100)

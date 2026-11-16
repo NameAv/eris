@@ -17,7 +17,7 @@ import time
 import numpy as np
 from PIL import Image
 
-from . import config, privacy, screen, tracker
+from . import apps, config, privacy, screen, tracker
 
 TW, TH = 320, 180          # thumbnail size
 PIXEL_DIFF = 22            # how different a pixel must be to count (0-255)
@@ -26,11 +26,20 @@ STILL = 0.0008             # share of pixels changing between looks = "it has se
 TICK = 0.5                 # seconds between looks at the whole screen
 FAST = 0.15                # seconds between looks at the box's own spot
 REACH_X, REACH_Y = 500, 450   # how far the quick look searches for a button that moved
-MIN_GAP = 4.0              # never ask the AI more often than this
-MAX_LOOKS_PER_STEP = 6     # then go quiet until you click the box / press F9
+MIN_GAP = 1.5              # never ask the AI more often than this
+MAX_LOOKS_PER_STEP = 12    # then go quiet until you click the box / press F9
+TYPING = 1.0               # no look until you've stopped typing for this long (Enter: look now)
 NEW_SCREEN = 0.02          # this much of the screen changed: what she's saying is out of date
 SCROLL_LIKE = 0.03         # after the box's button moved: the rest of the screen moved with it
                            # (a scroll) if, shifted back, no more than this share differs
+
+
+def _same_move(old_box, box, old_rect, rect, slack=8):
+    """Did the app's window move just as the box's button did (you dragged the window)?"""
+    if not (old_rect and rect) or old_rect == rect:
+        return False
+    return (abs((box[0] - old_box[0]) - (rect[0] - old_rect[0])) <= slack
+            and abs((box[1] - old_box[1]) - (rect[1] - old_rect[1])) <= slack)
 
 
 def _cursor_in(box):
@@ -57,6 +66,7 @@ class Watcher:
         self.last_fire = 0.0
         self.keep_streak = 0
         self.private_at, self.private = 0.0, False
+        self.last_rect = None          # the app window's place, to spot a window drag
         self.rebase()
         threading.Thread(target=self._loop, daemon=True).start()
 
@@ -134,13 +144,21 @@ class Watcher:
     def _follow(self, t, img, ox, oy):
         """Look for the box's button in img. Returns True if it's gone."""
         old = t.box
+        win = apps.front_window()
+        rect = (win or {}).get("rect")
         result, box = t.find(tracker.grey(img) if isinstance(img, Image.Image) else img, ox, oy)
         if result == tracker.MOVED:
             self.eris.follow(box)
+            if _same_move(old, box, self.last_rect, rect):
+                self.last_rect = rect
+                self.rebase(delay=0.25)      # you dragged the window: the box goes with it, nothing else
+                return False
+            self.last_rect = rect
             with self.lock:                  # was it a scroll, or a new page? _step decides
                 self.shift[0] += box[0] - old[0]
                 self.shift[1] += box[1] - old[1]
             return False
+        self.last_rect = rect
         return result == tracker.GONE and not _cursor_in(box)   # a hover effect isn't "gone"
 
     def _quick_look(self, sct):
@@ -173,7 +191,8 @@ class Watcher:
 
     def _ready(self):
         e = self.eris
-        return (config.WATCH and e.active and e.waiting and not e.busy and e.mon
+        typing = time.time() - getattr(e, "last_key", 0) < TYPING and self.nudged_at is None
+        return (config.WATCH and e.active and e.waiting and not e.busy and e.mon and not typing
                 and e.auto_looks < MAX_LOOKS_PER_STEP)
 
     def _private(self):
@@ -225,9 +244,8 @@ class Watcher:
                     return False
                 self.shift = [0, 0]           # the page itself changed: that counts
             part = changed(frame, self.base)
-            voice = getattr(self.eris, "voice", None)
-            if part > NEW_SCREEN and self.changed_at is None and voice and voice.busy():
-                voice.stop()                  # a new screen: stop talking about the old one
+            if part > NEW_SCREEN and self.changed_at is None and hasattr(self.eris, "screen_moved_on"):
+                self.eris.screen_moved_on()   # a new screen: stop talking about the old one
             different = gone or part > CHANGED
             still = changed(frame, self.prev) <= STILL
             self.prev = frame

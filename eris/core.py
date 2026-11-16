@@ -63,6 +63,7 @@ class Eris:
         self.check = None       # the screen as a step was set, to see what your click changed
         self.retried = False    # "give it another click" said once for this step
         self.pending_note = ""  # what that check found, for the next look
+        self.last_key = 0.0     # when you last pressed a key (not which key)
         self.last_what = ""     # what the box on screen points at (for lessons)
         self.waiting = None     # None | "click" | "next"
         self.steps = 0
@@ -328,6 +329,14 @@ class Eris:
         self.task_looks += 1
         my = self._new_gen()
         threading.Thread(target=self._turn_safe, args=(my, WATCH_PROMPT, True), daemon=True).start()
+
+    def screen_moved_on(self):
+        """A new screen came up while she was waiting: what she was saying and pointing at is
+        out of date, so stop talking and take the box down (her next look gives the next step)."""
+        self.voice.stop()
+        if self.box:
+            self.track = None
+            self.ui.cmd("clear_box")
 
     def follow(self, box):
         """The watcher saw the thing she pointed at move (you scrolled, or moved the
@@ -702,7 +711,8 @@ class Eris:
             config.TALK_KEY.lower(), config.NEXT_KEY.lower(), config.CANCEL_KEY.lower())
 
     def on_press(self, key):
-        if self._wanted(key):
+        self.last_key = time.time()        # only *when* a key was pressed (never which), so she
+        if self._wanted(key):              # doesn't look while you're typing
             self.inbox.put(("press", key, None))
 
     def on_release(self, key):

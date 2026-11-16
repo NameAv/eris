@@ -519,9 +519,9 @@ def test_scroll_or_new_page():
 def test_new_screen_stops_old_talk():
     import eris.watcher as W
     stopped = []
-    voice = types.SimpleNamespace(busy=lambda: True, stop=lambda: stopped.append(1))
     w = W.Watcher.__new__(W.Watcher)
-    w.eris = types.SimpleNamespace(waiting="click", mon=(0, 0, 1440, 810), voice=voice)
+    w.eris = types.SimpleNamespace(waiting="click", mon=(0, 0, 1440, 810),
+                                   screen_moved_on=lambda: stopped.append(1))
     w.lock, w.last_fire, w.keep_streak = threading.Lock(), 0.0, 0
     w.rebase(delay=0)
     w._step(np.zeros((W.TH, W.TW), np.int16), 100.0)
@@ -531,6 +531,14 @@ def test_new_screen_stops_old_talk():
     check("a small change (typing) doesn't cut her off", not stopped)
     w._step(np.full((W.TH, W.TW), 120, np.int16), 101.0)  # a new page
     check("a new screen: she stops talking about the old one", stopped == [1])
+
+
+def test_window_drag_or_not():
+    from eris.watcher import _same_move
+    check("the window moved just as the button did: a window drag",
+          _same_move((100, 100, 200, 130), (160, 70, 260, 100), (0, 0, 800, 600), (60, -30, 860, 570)))
+    check("the button moved but the window didn't: not a drag",
+          not _same_move((100, 100, 200, 130), (160, 70, 260, 100), (0, 0, 800, 600), (0, 0, 800, 600)))
 
 
 def test_hearing():

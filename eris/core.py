@@ -10,7 +10,7 @@ import traceback
 
 from pynput import keyboard
 
-from . import apps, config, elements, ocr, privacy, recipes, screen, settings, snap
+from . import apps, config, elements, experience, ocr, privacy, recipes, screen, settings, snap
 from .brain import Brain, locate
 from .speech import Voice, beep
 from .tracker import Tracker
@@ -45,6 +45,7 @@ class Eris:
         self.check = None       # the screen as a step was set, to see what your click changed
         self.retried = False    # "give it another click" said once for this step
         self.pending_note = ""  # what that check found, for the next look
+        self.last_what = ""     # what the box on screen points at (for lessons)
         self.waiting = None     # None | "click" | "next"
         self.steps = 0
         self.talking = False
@@ -130,7 +131,8 @@ class Eris:
         self._clear()
         self.steps = 0
         self.auto_looks = self.task_looks = 0
-        self.task = {"text": text, "app": None, "steps": [], "wrong": False, "recipe": None}
+        self.task = {"text": text, "app": None, "steps": [], "wrong": False, "recipe": None,
+                     "learned": "", "plan": [], "wrong_what": None}
         self.check, self.retried, self.pending_note = None, False, ""
         my = self._new_gen()
         threading.Thread(target=self._turn_safe, args=(my, text, False, True), daemon=True).start()
@@ -141,6 +143,10 @@ class Eris:
         if not self.waiting:
             return
         ref, self.check = self.check, None
+        t = self.task
+        if t and t["wrong_what"] and self.last_what and self.last_what != t["wrong_what"]:
+            experience.learn(t["app"], t["text"], t["wrong_what"], self.last_what)   # that one was right
+            t["wrong_what"] = None
         self.voice.stop()
         self._clear()
         self.steps += 1
@@ -152,25 +158,27 @@ class Eris:
             self.voice.say(msg)
             return
 
-        def later():
-            time.sleep(config.SETTLE_DELAY)   # let menus/panels open first
+        threading.Thread(target=self._after_step, args=(my, ref, clicked), daemon=True).start()
+
+    def _after_step(self, my, ref, clicked):
+        """A moment after the step: check what changed (free), then look again."""
+        time.sleep(config.SETTLE_DELAY)   # let menus/panels open first
+        if my != self.gen:
+            return
+        seen = self._what_changed(ref) if ref else ""
+        if seen == "nothing" and clicked:
+            time.sleep(1.0)                # a slow app: give it a moment more
             if my != self.gen:
                 return
-            seen = self._what_changed(ref) if ref else ""
-            if seen == "nothing" and clicked:
-                time.sleep(1.0)                # a slow app: give it a moment more
-                if my != self.gen:
-                    return
-                seen = self._what_changed(ref)
-                if seen == "nothing" and not self.retried and ref.get("box"):
-                    self._click_again(my, ref)
-                    return
-            self.retried = False
-            if seen:
-                self.pending_note = ("(Quick check after that step: "
-                                     + ("nothing on the screen changed" if seen == "nothing" else seen) + ".)")
-            self._turn_safe(my, NEXT_STEP_PROMPT)
-        threading.Thread(target=later, daemon=True).start()
+            seen = self._what_changed(ref)
+            if seen == "nothing" and not self.retried and ref.get("box"):
+                self._click_again(my, ref)
+                return
+        self.retried = False
+        if seen:
+            self.pending_note = ("(Quick check after that step: "
+                                 + ("nothing on the screen changed" if seen == "nothing" else seen) + ".)")
+        self._turn_safe(my, NEXT_STEP_PROMPT)
 
     # ---------- checking a step, recipes ----------
     def _what_changed(self, ref):
@@ -212,10 +220,24 @@ class Eris:
         t = self.task
         if t is not None and text and (not t["steps"] or t["steps"][-1] != text):
             t["steps"].append(text)
+            if t["plan"]:                  # "Step 2 of 4" under the chat
+                n = min(self.steps + 1, len(t["plan"]))
+                self.ui.log("info", f"Step {n} of {len(t['plan'])}: {t['plan'][n - 1]}")
+
+    def _set_plan(self, text):
+        """Her plan for the task (the first reply's PLAN line), shown in the chat."""
+        t = self.task
+        steps = [s.strip() for s in text.split("|") if s.strip()][:8]
+        if t is None or t["plan"] or len(steps) < 2:
+            return
+        t["plan"] = steps
+        self.ui.log("hint", "Plan:  " + "   ".join(f"{i}. {s}" for i, s in enumerate(steps, 1)))
 
     def _finish_task(self):
         """The task is done: keep its steps as a recipe, unless something went wrong."""
         t, self.task = self.task, None
+        if t and not t["wrong"] and t["app"] and t["steps"]:
+            experience.finished(t["app"])
         if t and not t["wrong"] and t["app"] and len(t["steps"]) >= 2:
             try:
                 recipes.remember(t["text"], t["app"], t["steps"])
@@ -231,6 +253,7 @@ class Eris:
         box, shot, history = self.box, self.last_shot, list(self.brain.history[-2:])
         if self.task:
             self.task["wrong"] = True     # this one won't be kept as a recipe
+            self.task["wrong_what"] = self.last_what
         threading.Thread(target=self._save_mistake, args=(shot, box, history), daemon=True).start()
         self.voice.stop()
         self._clear()
@@ -371,10 +394,13 @@ class Eris:
                 app = shot.app.get("name") if isinstance(getattr(shot, "app", None), dict) else ""
                 t["app"] = app or ""
                 t["recipe"] = recipes.find(t["text"], app) if app else None
+                t["learned"] = experience.notes(app, t["text"])
                 if t["recipe"]:
                     self.ui.log("debug", f"using a recipe: {t['recipe']['task']!r}")
             if t["recipe"]:
                 notes.append(recipes.describe(t["recipe"], self.steps + 1))
+            if t["learned"]:
+                notes.append(t["learned"])
         if self.pending_note:
             notes.append(self.pending_note)
             self.pending_note = ""
@@ -818,8 +844,13 @@ class Step:
 
     def on_wait(self, mode):
         self.ended = True
+        if self.said and self._my_box():
+            self.e.last_what = self.what or self.said
         self.e._log_step(self.summary())
         self.e.waiting = mode if self.e.box or mode == "next" else "next"
+
+    def on_plan(self, text):
+        self.e._set_plan(text)
 
     def on_keep(self, _):   # KEEP after other lines: wait for you to press Next
         self.on_wait("next")

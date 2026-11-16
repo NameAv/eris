@@ -44,8 +44,11 @@ def remember(task, app, steps):
     if len(steps) < 2 or not words(task):
         return
     w = words(task)
-    recs = [r for r in load() if not (r.get("app") == app and _alike(words(r.get("task", "")), w) >= SAME)]
-    recs.append({"task": task.strip(), "app": app, "steps": steps[:12], "saved": time.strftime("%Y-%m-%d")})
+    old = [r for r in load() if r.get("app") == app and _alike(words(r.get("task", "")), w) >= SAME]
+    recs = [r for r in load() if r not in old]
+    uses = max([r.get("uses", 1) for r in old], default=0) + 1      # how often it's been done
+    recs.append({"task": task.strip(), "app": app, "steps": steps[:12], "uses": uses,
+                 "saved": time.strftime("%Y-%m-%d")})
     file().parent.mkdir(parents=True, exist_ok=True)
     file().write_text(json.dumps(recs[-KEEP:], indent=1), encoding="utf-8")
 
@@ -68,9 +71,12 @@ def find(task, app):
 def describe(rec, step_no):
     """The recipe as a note for the AI."""
     steps = "\n".join(f"{i}. {s}" for i, s in enumerate(rec["steps"], 1))
-    return (f'You guided them through this before ("{rec["task"]}") and these steps worked:\n{steps}\n'
+    note = (f'You guided them through this before ("{rec["task"]}") and these steps worked:\n{steps}\n'
             f"They're probably at step {step_no}. Use this as a guide, but trust the screen: "
             "if it looks different, adapt.")
+    if rec.get("uses", 1) >= 2:
+        note += f" They've done this {rec['uses']} times now: keep it brief."
+    return note
 
 
 def forget():

@@ -59,6 +59,9 @@ SCROLL <way>      - when what they need is scrolled out of view: SCROLL down, up
 right. An arrow shows which way. Use with NOBOX and WAIT next.
 SAY <sentence>    - 1 to 3 SAY lines, spoken out loud: short, natural, plain. First SAY = \
 the action. Optionally one more = how to recognise it or why, or a quick bit of you.
+PLAN <a | b | c>  - only in your first reply to a new task that takes 3 or more steps: the \
+steps ahead, 2-5 words each, separated by | (e.g. PLAN Select Player | Add Component | Pick \
+Rigidbody). Shown to them as a checklist.
 REMEMBER <fact>   - optional: something worth keeping for next time, that you decided \
 about yourself or learned about them (e.g. "My profile picture is a golden apple on red \
 silk", "Their game is a 2D platformer called Moss"). Short.
@@ -156,6 +159,7 @@ NOBOX              if there's nothing to point at
 WHAT <the exact thing, e.g. "the blue Add Component button">
 TYPE <text>        only if they must type something
 KEY <keys>         only if they must press a key or shortcut, e.g. KEY Ctrl+S
+PLAN a | b | c     only in your first reply to a new task of 3+ steps: the steps ahead, short
 TO ELEMENT <m>     only for a drag: where to drop the boxed thing
 SCROLL down        if what they need is scrolled out of view (with NOBOX)
 SAY <one short sentence: what to do>

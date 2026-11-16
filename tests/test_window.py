@@ -164,10 +164,24 @@ def new_task():
 @step(500)
 def settings_pages():
     w = app._settings
+    from eris import recipes
+    recipes.remember("add a rigidbody to my player", "Unity", ["Click Player", "Add Component", "Type rigidbody"])
     for page in ["brain", "voice", "guiding", "privacy", "eris", "keys", "app"]:
         w.show(page)
         w.update()
     check("every settings page builds", True)
+    w.show("eris")
+    w.update()
+
+    def texts(widget):
+        for child in widget.winfo_children():
+            try:
+                yield child.cget("text")
+            except Exception:
+                pass
+            yield from texts(child)
+    check("Settings shows what she's learned", any("add a rigidbody to my player" in str(t) for t in texts(w)))
+    recipes.forget()
     w.show("brain")
     w.set(BRAIN="local")
     w.show("brain")

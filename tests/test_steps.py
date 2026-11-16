@@ -123,6 +123,41 @@ def test_recipes():
     check("a task where you pressed Wrong box isn't kept", not recipes.load())
 
 
+def test_learning_from_experience():
+    from eris import experience, recipes
+    experience.forget()
+    recipes.forget()
+    shot = fake_shot()
+    shot.app = {"name": "Unity", "title": "MyGame - Unity", "hwnd": 1}
+    e, ui, _ = make_eris(shot)
+    e.brain.script = ["BOX 10 10 50 30\nWHAT Rigidbody 2D\nSAY Click Rigidbody 2D.\nPLAN Select Player | Add Component | Pick Rigidbody\nWAIT click",
+                      "BOX 60 60 90 90\nWHAT Rigidbody\nSAY Sorry, this one: Rigidbody.\nWAIT click",
+                      "NOBOX\nSAY Done!\nDONE"]
+    e.ask("add a rigidbody to my player")
+    check("her plan shows in the chat", wait_for(lambda: any(l[0] == "hint" and "1. Select Player" in l[1] for l in ui.logs)))
+    check("...with the step you're on", wait_for(lambda: any(l[0] == "info" and l[1].startswith("Step 1 of 3") for l in ui.logs)))
+    wait_for(lambda: e.waiting == "click")
+    e.wrong_box()
+    wait_for(lambda: e.waiting == "click" and e.last_what == "Rigidbody" and not e.busy)
+    e.advance()
+    wait_for(lambda: e.task is None)
+    e.brain.script = ["NOBOX\nSAY Sure.\nDONE"]
+    e.ask("add a rigidbody to the enemy")
+    check("a mix-up you corrected becomes a lesson for next time",
+          wait_for(lambda: len(e.brain.notes) >= 4)
+          and "not Rigidbody 2D, the right one was Rigidbody" in e.brain.notes[-1], e.brain.notes[-1:])
+    for _ in range(experience.AT_HOME):
+        experience.finished("Unity")
+    check("where you're at home, she skips the basics", "skip the very basics" in experience.notes("Unity", "x"))
+    check("...but not in other apps", experience.notes("Blender", "x") == "")
+    for _ in range(2):
+        recipes.remember("open the lighting window", "Unity", ["Click Window", "Click Rendering > Lighting"])
+    check("a task done again and again: she keeps it brief",
+          "keep it brief" in recipes.describe(recipes.find("open the lighting window", "Unity"), 1))
+    experience.forget()
+    recipes.forget()
+
+
 def test_checking_a_step():
     import numpy as np
     e, ui, _ = make_eris()

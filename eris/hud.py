@@ -13,7 +13,6 @@ from PIL import Image, ImageDraw, ImageFilter
 from . import config
 
 SS = 2           # drawn at 2x then shrunk = smooth edges
-DARK = (14, 3, 6)
 WHITE = (255, 236, 232)
 
 
@@ -363,7 +362,7 @@ def drop(src, dst, variant=1):
     a = _edge(s, ((d[0] + d[2]) / 2, (d[1] + d[3]) / 2))
     b = _edge(d, ((s[0] + s[2]) / 2, (s[1] + s[3]) / 2))
     length = math.hypot(b[0] - a[0], b[1] - a[1])
-    beam = None
+    line = None
     if length > 30:
         ux, uy = (b[0] - a[0]) / length, (b[1] - a[1]) / length
         end = (b[0] - ux * 8, b[1] - uy * 8)
@@ -381,14 +380,14 @@ def drop(src, dst, variant=1):
             strip = strip.transpose(Image.FLIP_TOP_BOTTOM)
         strip = strip.rotate(-math.degrees(math.atan2(uy, ux)), Image.BICUBIC, expand=True)
         mx, my = a[0] + ux * run / 2, a[1] + uy * run / 2
-        beam = (strip, int(mx - strip.width / 2), int(my - strip.height / 2))
+        line = (strip, int(mx - strip.width / 2), int(my - strip.height / 2))
     tx, ty = d[2] + 10, (d[1] + d[3]) / 2 - 12                          # DROP HERE, beside the target
     cv.line([(d[2] + 2, ty + 12), (tx, ty + 12)], red + (255,), 2)
     _plate(cv, tx, ty, "DROP HERE", 12, red, arrow="left")
     img = cv.finish()
-    if beam:
+    if line:
         layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
-        layer.paste(*beam[:1], beam[1:])
+        layer.paste(line[0], line[1:])
         img = Image.alpha_composite(layer, img)                         # under the arrowhead and tags
     return img, x0, y0
 

@@ -10,6 +10,7 @@ The AI is told to answer in this shape (one thing per line):
     SCROLL down | up | left | right            <- what they need is scrolled out of view
     SAY one short sentence                     <- spoken the moment each line arrives
     REMEMBER a fact about you                  <- saved to her memory
+    PLAN step | step | step                    <- first reply of a task: the steps ahead
     WAIT click | WAIT next | DONE              <- how this step ends
 or just KEEP (after an automatic look: nothing new, keep waiting). The zoom-in check
 answers BOX or NONE.
@@ -24,7 +25,7 @@ class Event:
 
 
 BARE = {"NOBOX", "DONE", "KEEP", "AVATAR", "NONE"}       # just the word
-WORDS = {"SAY", "WHAT", "REMEMBER", "TYPE"}             # the word and some text
+WORDS = {"SAY", "WHAT", "REMEMBER", "TYPE", "PLAN"}     # the word and some text
 
 
 def _box(rest):

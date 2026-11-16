@@ -651,6 +651,30 @@ class SettingsWindow(ctk.CTkToplevel):
                                                self.show("eris"))).pack(side="right", padx=6)
         if mems:
             self.button(c, "Forget everything", self._forget_all).pack(anchor="w", pady=(10, 0))
+        self._learned_card()
+
+    def _learned_card(self):
+        from . import experience, recipes
+        recs = recipes.load()
+        lessons, done = experience.summary()
+        c = self.card("What she's learned", "Steps of tasks that went well (she follows them next "
+                                            "time), and mix-ups you corrected with Wrong box.")
+        if not (recs or lessons or done):
+            self.muted(c, "Nothing yet. She learns as you finish tasks together.")
+            return
+        apps = ", ".join(f"{a} ({n})" for a, n in sorted(done.items(), key=lambda x: -x[1])[:4])
+        self.muted(c, f"{len(recs)} task recipe{'s' * (len(recs) != 1)} · {lessons} lesson{'s' * (lessons != 1)}"
+                      + (f" · tasks finished: {apps}" if apps else ""), wrap=480)
+        for r in recs[-5:][::-1]:
+            ctk.CTkLabel(c, text=f'•  "{r["task"]}"  ({r["app"]}, {len(r["steps"])} steps)', font=font(12),
+                         text_color=T.TEXT, anchor="w").pack(fill="x", pady=1)
+
+        def forget():
+            recipes.forget()
+            experience.forget()
+            self.toast("✓ She forgot what she learned")
+            self.show("eris")
+        self.button(c, "Forget what she's learned", forget).pack(anchor="w", pady=(10, 0))
 
     def _remove_avatar(self):
         try:
@@ -663,8 +687,9 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _forget_all(self):
         settings.forget_all()
-        from . import recipes
+        from . import experience, recipes
         recipes.forget()
+        experience.forget()
         self.app.eris.brain.reset()
         self.app.avatar.load()
         self.toast("✓ She forgot everything")

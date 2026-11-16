@@ -318,10 +318,17 @@ class Brain:
             return 28
         return 1
 
+    @staticmethod
+    def window_only():
+        """Send just the app's window, not the whole monitor? (The Free brain: a small
+        model reads a window's words better at the same image size.)"""
+        return config.BRAIN == "local" and config.LOCAL_WINDOW_ONLY
+
     def turn(self, shot, text, on_event, alive):
         """Stream one step. Calls on_event(Event) as lines arrive. alive() -> False aborts."""
         coords = local_info()["coords"] if config.BRAIN == "local" else "pixels"
-        user_text = f"{text}\n\n(Screenshot is {shot.img_w}x{shot.img_h} pixels.)"
+        user_text = f"{text}\n\n(Screenshot is {shot.img_w}x{shot.img_h} pixels"
+        user_text += ", showing just the app's window.)" if getattr(shot, "monitor", None) else ".)"
         app = apps.describe(getattr(shot, "app", None))
         if app:
             user_text += "\n" + app

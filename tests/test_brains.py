@@ -93,6 +93,13 @@ def test_app_and_elements_in_prompt():
     text = CAP["messages"][-1]["content"][1]["text"]
     check("the AI is told which app is in front", 'App in front: Google Chrome' in text)
     check("...and gets the numbered list", '[1] link "Wikipedia" at 109,328 to 207,344' in text)
+    shot.monitor = (0, 0, 2560, 1440)
+    b.turn(shot, "go", lambda e: None, lambda: True)
+    check("told when it's just the app's window", "just the app's window" in CAP["messages"][-1]["content"][1]["text"])
+    config.BRAIN = "local"
+    check("only the Free brain gets just the window", brain.Brain.window_only())
+    config.BRAIN = "claude"
+    check("...Claude sees the whole screen", not brain.Brain.window_only())
 
 
 class Ollama(http.server.BaseHTTPRequestHandler):

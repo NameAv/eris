@@ -237,6 +237,44 @@ def watcher_reacts():
     check("the watcher noticed the page load and looked again", app.eris.waiting == "click")
 
 
+@step(500)
+def ask_about_a_button():
+    target = tk.Label(browser, text="   Add Component   ", bg="#1a73e8", fg="white",
+                      font=("DejaVu Sans", 16, "bold"))
+    target.place(x=300, y=400)
+    browser.update()
+    x, y, w, h = target.winfo_rootx(), target.winfo_rooty(), target.winfo_width(), target.winfo_height()
+    REPLIES.append(lambda shot: f"BOX {(x - shot.left) / shot.sx} {(y - shot.top) / shot.sy} "
+                                f"{(x + w - shot.left) / shot.sx} {(y + h - shot.top) / shot.sy}\n"
+                                "WHAT the Add Component button\nSAY Click Add Component.\nWAIT click")
+    app.eris.ask("add a component")
+
+
+@step(1200)
+def move_the_window():
+    global before
+    check("she's ready to follow the button", app.eris.track is not None, app.eris.box)
+    before = app.eris.box
+    browser.geometry("760x500+520+40")       # you drag the window up and left
+
+
+@step(300)
+def box_followed():
+    after = app.eris.box or (0, 0, 0, 0)
+    check("the box followed its button when the window moved",
+          before and abs(after[0] - (before[0] - 40)) <= 2 and abs(after[1] - (before[1] - 100)) <= 2,
+          (before, after))
+    check("...without asking the AI again", not REPLIES and app.eris.waiting == "click")
+    check("Wrong box button works while a box is up", app.wrong_btn.cget("state") == "normal")
+    app.wrong_btn.invoke()
+
+
+@step(800)
+def wrong_box_pressed():
+    check("Wrong box: she looked again and the button went quiet",
+          app.wrong_btn.cget("state") == "disabled" and app.eris.box is None)
+
+
 if os.environ.get("DISPLAY") and sys.platform.startswith("linux"):
     # Real mouse clicks (only on a virtual screen, so a real mouse is never moved).
     @step(300)

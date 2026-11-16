@@ -16,11 +16,14 @@ import numpy as np
 
 from . import config
 
-SAME = 6.0          # mean grey difference (0-255) that still counts as "unchanged"
+INK = 40            # grey difference (0-255) that makes a pixel part of the text/edges
+SAME = 0.03         # share of those that may change and still be "unchanged" (a caret)
 MATCH = 0.86        # match score (up to 1.0) needed to say "that's it"
-COARSE = 0.72       # ...on the shrunk copy, which is blurrier
-CLOSE = 0.03        # matches this close to the best count as equally good
+COARSE = 0.5        # ...on the shrunk copy (thin text blurs there; the exact check decides)
+CANDIDATES = 12     # spots compared pixel-exact before choosing
+CLOSE = 0.01        # pixel-exact matches this close to the best count as equally good
 INSET = 3           # px kept clear inside the box's own outline and glow
+MAX_W, MAX_H = 320, 120   # a bigger target is recognised by its middle (keeps it quick)
 
 SAME_SPOT, MOVED, GONE = "same", "moved", "gone"
 
@@ -77,6 +80,7 @@ class Tracker:
         self.box = box              # the box on screen (screen coords, padding included)
         self.offset = offset        # where the picture sits inside the box
         self.seen = picture         # how the spot looked last time (e.g. hovered)
+        self.ink = int((np.abs(picture - np.median(picture)) > INK).sum())
         self._pz = picture - picture.mean()
         self._pn = float(np.sqrt((self._pz * self._pz).sum()))
 
@@ -96,6 +100,12 @@ class Tracker:
         x1, y1, x2, y2 = box[0] + inset, box[1] + inset, box[2] - inset, box[3] - inset
         if hint and box_visible and x2 - x1 > 160:
             x2 -= min(int((x2 - x1) * 0.6), len(hint) * 8 + 30)
+        if x2 - x1 > MAX_W:
+            x1 += (x2 - x1 - MAX_W) // 2
+            x2 = x1 + MAX_W
+        if y2 - y1 > MAX_H:
+            y1 += (y2 - y1 - MAX_H) // 2
+            y2 = y1 + MAX_H
         cx1, cy1 = x1 - left, y1 - top
         if x2 - x1 < 8 or y2 - y1 < 6 or cx1 < 0 or cy1 < 0 or x2 - left > full.width or y2 - top > full.height:
             return None
@@ -115,8 +125,7 @@ class Tracker:
         h, w = self.picture.shape
         px, py = self.box[0] + self.offset[0] - ox, self.box[1] + self.offset[1] - oy
         here = _crop(img, px, py, w, h)
-        if here is not None and (np.mean(np.abs(here - self.seen)) < SAME or self._score(here) >= MATCH):
-            self.seen = here
+        if here is not None and (np.abs(here - self.seen) > INK).sum() <= max(3, SAME * self.ink):
             return SAME_SPOT, self.box
         spot = self._search(img, px, py)
         if spot is None:
@@ -130,20 +139,53 @@ class Tracker:
         return MOVED, self.box
 
     def _search(self, img, near_x, near_y):
+        """Best matching spot: the top few on a shrunk copy, compared pixel-exact. Of
+        matches equally good, the one nearest to where it was."""
         h, w = self.picture.shape
         f = int(np.clip(min(h, w) // 6, 1, 6))      # shrink, but keep the picture recognisable
         scores = _match_map(_shrink(img, f), _shrink(self.picture, f))
         if scores is None or scores.size == 0 or scores.max() < COARSE:
             return None
-        ys, xs = np.nonzero(scores >= scores.max() - CLOSE)
-        i = int(np.argmin((xs * f - near_x) ** 2 + (ys * f - near_y) ** 2))
-        cx, cy = int(xs[i]) * f, int(ys[i]) * f
-        best, spot = MATCH, None
-        for y in range(cy - f - 1, cy + f + 2):
-            for x in range(cx - f - 1, cx + f + 2):
+        found = []
+        for cx, cy in _peaks(scores, max(1, w // f // 2), max(1, h // f // 2)):
+            best, spot = self._best_near(img, cx * f, cy * f, f + 1, max(1, f // 2))
+            if spot and f > 1:
+                best, spot = self._best_near(img, spot[0], spot[1], max(1, f // 2), 1)
+            if spot and best >= MATCH:
+                found.append((best, spot))
+        if not found:
+            return None
+        top = max(b for b, _ in found)
+        near = [sp for b, sp in found if b >= top - CLOSE]
+        return min(near, key=lambda sp: (sp[0] - near_x) ** 2 + (sp[1] - near_y) ** 2)
+
+    def _best_near(self, img, x0, y0, reach, step):
+        h, w = self.picture.shape
+        best, spot = -1.0, None
+        for y in range(y0 - reach, y0 + reach + 1, step):
+            for x in range(x0 - reach, x0 + reach + 1, step):
                 patch = _crop(img, x, y, w, h)
                 if patch is not None:
                     s = self._score(patch)
-                    if s >= best:
+                    if s > best:
                         best, spot = s, (x, y)
-        return spot
+        return best, spot
+
+
+def _peaks(scores, gap_x, gap_y):
+    """The best few separate spots in a score map (each at least a gap apart)."""
+    flat = scores.ravel()
+    k = min(flat.size, 2000)
+    order = np.argpartition(flat, -k)[-k:]
+    order = order[np.argsort(flat[order])[::-1]]
+    W = scores.shape[1]
+    out = []
+    for i in order:
+        if flat[i] < max(COARSE, flat[order[0]] - 0.1):
+            break
+        y, x = divmod(int(i), W)
+        if all(abs(x - a) > gap_x or abs(y - b) > gap_y for a, b in out):
+            out.append((x, y))
+            if len(out) == CANDIDATES:
+                break
+    return out

@@ -54,6 +54,7 @@ OCR = True              # read the words on screen in apps that don't share thei
 ELEMENTS = True         # give the AI Windows' numbered list of clickable things (exact boxes)
 REFINE = True           # zoom in to snap the box exactly onto the target
 WATCH = True            # watch the screen while waiting and react to what you do
+LOCAL_WINDOW_ONLY = True   # Free brain: send just the app's window when it doesn't fill the screen
 TRACK = True            # the box follows its button when you scroll or move the window
 BOX_IN_RECORDINGS = False   # show the box in screen recordings / shares (it then also shows
                             # up in her own screenshots, so it's off by default)

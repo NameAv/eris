@@ -15,17 +15,18 @@ _mouse = Controller()
 @dataclass
 class Shot:
     b64: str          # JPEG, base64
-    left: int         # monitor position on the desktop (physical pixels)
-    top: int
-    width: int        # monitor size (physical pixels)
+    left: int         # the captured area on the desktop (physical pixels): the monitor,
+    top: int          # or just the app's window (then `monitor` says which monitor)
+    width: int
     height: int
-    sx: float         # monitor px per image px, horizontally
+    sx: float         # screen px per image px, horizontally
     sy: float         # ...and vertically
     img_w: int
     img_h: int
-    full: object = field(default=None, repr=False)   # full-sharpness PIL image of the monitor
+    full: object = field(default=None, repr=False)   # full-sharpness PIL image of that area
     elements: list = field(default_factory=list)     # clickable things (see elements.py)
     app: object = None                               # the app in front (see apps.py)
+    monitor: tuple = None   # (left, top, w, h) of the whole monitor, if only a window was sent
 
     def to_screen(self, box):
         """Image coords from the brain -> real desktop coords, clamped and padded."""
@@ -69,6 +70,35 @@ def new_sct():
     return mss.MSS() if hasattr(mss, "MSS") else mss.mss()
 
 
+def monitor_for(sct, rect=None):
+    """The monitor your app is on (the one with most of its window), else the one your
+    mouse is on. (Not just the mouse: it's often over Eris on another screen.)"""
+    if rect:
+        def overlap(m):
+            w = min(rect[2], m["left"] + m["width"]) - max(rect[0], m["left"])
+            h = min(rect[3], m["top"] + m["height"]) - max(rect[1], m["top"])
+            return max(0, w) * max(0, h)
+        best = max(sct.monitors[1:], key=overlap)
+        if overlap(best) > 0:
+            return best
+    return monitor_under_mouse(sct)
+
+
+def window_area(rect, mon, margin=0.03, most=0.7, least=0.2):
+    """Just the app's window (plus a little around it) as a capture area, or None when
+    the window fills most of the screen anyway (or is too small to be the whole task)."""
+    if not rect:
+        return None
+    mx, my = int(mon["width"] * margin), int(mon["height"] * margin)
+    l, t = max(mon["left"], rect[0] - mx), max(mon["top"], rect[1] - my)
+    r = min(mon["left"] + mon["width"], rect[2] + mx)
+    b = min(mon["top"] + mon["height"], rect[3] + my)
+    share = max(0, r - l) * max(0, b - t) / (mon["width"] * mon["height"])
+    if not least <= share <= most:
+        return None
+    return {"left": l, "top": t, "width": r - l, "height": b - t}
+
+
 def monitor_under_mouse(sct):
     mx, my = _mouse.position
     for m in sct.monitors[1:]:
@@ -89,10 +119,10 @@ def black_out(img, rects, mon):
         d.text((a + 6, b + max(2, (e - b) // 2 - 6)), "hidden", fill=(200, 200, 200))
 
 
-def capture():
-    """The raw screen of the monitor your mouse is on (stays on your PC until finish())."""
+def capture(rect=None):
+    """The raw screen of the monitor your app is on (stays on your PC until finish())."""
     with new_sct() as sct:
-        mon = monitor_under_mouse(sct)
+        mon = monitor_for(sct, rect)
         raw = sct.grab(mon)
     return Image.frombytes("RGB", raw.size, raw.bgra, "raw", "BGRX"), mon
 

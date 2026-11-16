@@ -170,6 +170,8 @@ class App(ctk.CTk):
     def _handle(self, name, args):
         if name in OVERLAY_CMDS:
             getattr(self.overlay, name)(*args)
+            if name in ("box", "clear_box"):
+                self.wrong_btn.configure(state="normal" if name == "box" else "disabled")
         elif name == "log":
             self._append(*args)
         elif name == "state":
@@ -258,12 +260,17 @@ class App(ctk.CTk):
         ctl = self.ctl_row = ctk.CTkFrame(self, fg_color="transparent")
         ctl.pack(fill="x", padx=15)
         for text, fn in (("Next step", lambda: self.eris.advance()),
+                         ("Wrong box", lambda: self.eris.wrong_box()),
                          ("Stop", lambda: self.eris.cancel()),
                          ("New task", lambda: self.eris.new_task())):
-            ctk.CTkButton(ctl, text=text, height=34, corner_radius=17, font=font(13),
-                          fg_color="transparent", border_width=1, border_color=T.BORDER,
-                          hover_color=T.CARD_2, text_color=T.TEXT,
-                          command=fn).pack(side="left", expand=True, fill="x", padx=3)
+            b = ctk.CTkButton(ctl, text=text, height=34, corner_radius=17, font=font(13),
+                              fg_color="transparent", border_width=1, border_color=T.BORDER,
+                              hover_color=T.CARD_2, text_color=T.TEXT, text_color_disabled=T.MUTED,
+                              command=fn)
+            b.pack(side="left", expand=True, fill="x", padx=3)
+            if text == "Wrong box":
+                self.wrong_btn = b
+                b.configure(state="disabled")   # only while a box is showing
 
         # type box
         typ = ctk.CTkFrame(self, fg_color=T.CARD_2, corner_radius=22)

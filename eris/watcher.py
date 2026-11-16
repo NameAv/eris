@@ -5,22 +5,41 @@ something else...).
 It only compares tiny greyscale thumbnails on your PC, so watching itself is
 free. The AI is only asked when the screen actually changed and has settled.
 Eris's own windows, the red box and its type hint are ignored.
+
+The box's own spot is checked more often (a small grab, a few times a second): when you
+scroll or move the window, the box follows its button (tracker.py) and that doesn't
+count as "something happened". If the button is gone, she looks again.
 """
+import sys
 import threading
 import time
 
 import numpy as np
 from PIL import Image
 
-from . import config, privacy, screen
+from . import config, privacy, screen, tracker
 
 TW, TH = 320, 180          # thumbnail size
 PIXEL_DIFF = 22            # how different a pixel must be to count (0-255)
 CHANGED = 0.0025           # share of pixels that must differ from the start = "something happened"
 STILL = 0.0008             # share of pixels changing between looks = "it has settled"
-TICK = 0.5                 # seconds between looks
+TICK = 0.5                 # seconds between looks at the whole screen
+FAST = 0.15                # seconds between looks at the box's own spot
+REACH_X, REACH_Y = 250, 450   # how far the quick look searches for a button that moved
 MIN_GAP = 4.0              # never ask the AI more often than this
 MAX_LOOKS_PER_STEP = 6     # then go quiet until you click the box / press F9
+
+
+def _cursor_in(box):
+    """Is the mouse over the box? (Windows; elsewhere: no.)"""
+    if not box or sys.platform != "win32":
+        return False
+    import ctypes
+    from ctypes import wintypes
+    p = wintypes.POINT()
+    if not ctypes.windll.user32.GetCursorPos(ctypes.byref(p)):
+        return False
+    return box[0] <= p.x <= box[2] and box[1] <= p.y <= box[3]
 
 
 def _diff(a, b):
@@ -70,14 +89,46 @@ class Watcher:
             out.append((max(0, a), max(0, b), min(TW, c), min(TH, d)))
         return out
 
-    def _thumb(self, sct, mon):
-        left, top, w, h = mon
-        raw = sct.grab({"left": left, "top": top, "width": w, "height": h})
-        img = Image.frombytes("RGB", raw.size, raw.bgra, "raw", "BGRX").convert("L")
+    @staticmethod
+    def _grab(sct, left, top, w, h):
+        raw = sct.grab({"left": int(left), "top": int(top), "width": int(w), "height": int(h)})
+        return Image.frombytes("RGB", raw.size, raw.bgra, "raw", "BGRX").convert("L")
+
+    def _thumb(self, img, mon):
         arr = np.asarray(img.resize((TW, TH), Image.BILINEAR), dtype=np.int16).copy()
         for a, b, c, d in self._masks(mon):
             arr[b:d, a:c] = 0
         return arr
+
+    # ---- following the box's button ----
+    def _tracker(self):
+        e, t = self.eris, self.eris.track
+        if config.TRACK and t and e.box and t.box == tuple(int(v) for v in e.box):
+            return t
+        return None
+
+    def _follow(self, t, img, ox, oy):
+        """Look for the box's button in img. Returns True if it's gone."""
+        result, box = t.find(tracker.grey(img) if isinstance(img, Image.Image) else img, ox, oy)
+        if result == tracker.MOVED:
+            self.eris.follow(box)
+            self.rebase(delay=0.25)          # scrolling isn't "doing the step"
+            return False
+        return result == tracker.GONE and not _cursor_in(box)   # a hover effect isn't "gone"
+
+    def _quick_look(self, sct):
+        """A small grab around the box. True: something changed there and the button
+        wasn't found nearby, so check the whole screen now."""
+        t = self._tracker()
+        if not t:
+            return False
+        left, top, w, h = self.eris.mon
+        x1, y1, x2, y2 = t.box
+        rx1, ry1 = max(left, x1 - REACH_X), max(top, y1 - REACH_Y)
+        rx2, ry2 = min(left + w, x2 + REACH_X), min(top + h, y2 + REACH_Y)
+        if rx2 - rx1 < 16 or ry2 - ry1 < 16:
+            return False
+        return self._follow(t, self._grab(sct, rx1, ry1, rx2 - rx1, ry2 - ry1), rx1, ry1)
 
     def _ready(self):
         e = self.eris
@@ -85,29 +136,41 @@ class Watcher:
                 and e.auto_looks < MAX_LOOKS_PER_STEP and not privacy.should_look_away())
 
     def _loop(self):
-        sct = None
+        sct, last_full = None, 0.0
         while True:
-            time.sleep(TICK)
+            time.sleep(FAST)
             try:
-                if not self._ready() or time.time() < self.base_after:
+                if not self._ready():
                     continue
                 sct = sct or screen.new_sct()
-                frame = self._thumb(sct, self.eris.mon)
-                if self._step(frame):
+                urgent = self._quick_look(sct)
+                now = time.time()
+                if now < self.base_after or (not urgent and now - last_full < TICK):
+                    continue
+                last_full = now
+                mon = self.eris.mon
+                img = self._grab(sct, *mon)
+                t = self._tracker()
+                gone = bool(t) and self._follow(t, img, mon[0], mon[1])
+                if self.base_after > time.time():     # it just followed a scroll
+                    continue
+                if self._step(self._thumb(img, mon), gone=gone):
                     self.eris.auto_look()
             except Exception as ex:   # never let watching crash Eris
                 self.eris.ui.log("debug", f"watcher: {ex}")
                 sct = None
                 time.sleep(2)
 
-    def _step(self, frame, now=None):
-        """Feed one thumbnail. Returns True when it's time for Eris to look."""
+    def _step(self, frame, now=None, gone=False):
+        """Feed one thumbnail. Returns True when it's time for Eris to look.
+        gone: the box's button has disappeared (that counts as a change even though
+        the box's area is masked out)."""
         now = now or time.time()
         with self.lock:
             if self.base is None:
                 self.base = self.prev = frame
                 return False
-            changed = _diff(frame, self.base) > CHANGED
+            changed = gone or _diff(frame, self.base) > CHANGED
             still = _diff(frame, self.prev) <= STILL
             self.prev = frame
             if changed and self.changed_at is None:

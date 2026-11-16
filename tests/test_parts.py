@@ -156,6 +156,83 @@ def test_watching():
     check("a screen that never settles: fewer and fewer looks", len(looks) <= 3, looks)
 
 
+def test_tracking():
+    from eris import tracker
+    W, H = 2560, 1440
+    page = Image.new("RGB", (W, H), "white")
+    d = ImageDraw.Draw(page)
+    for i in range(12):                       # a list of results that look alike
+        d.text((300, 200 + i * 90), f"Result number {i}: Wikipedia", fill="#1a0dab", font=_font(22))
+    d.rounded_rectangle((900, 300, 1100, 344), 8, fill="#1a73e8")
+    d.text((935, 308), "Add Component", fill="white", font=_font(20))
+    p = config.BOX_PADDING
+    button = (900 - p, 300 - p, 1100 + p, 344 + p)
+
+    def shifted(dx, dy):
+        out = Image.new("RGB", (W, H), "white")
+        out.paste(page, (dx, dy))
+        return tracker.grey(out)
+
+    t = tracker.Tracker.make(page, 0, 0, button)
+    check("a button gets a tracker", t is not None)
+    check("unchanged screen: same spot", t.find(tracker.grey(page), 0, 0) == ("same", button))
+    hover = page.copy()
+    ImageDraw.Draw(hover).rounded_rectangle((900, 300, 1100, 344), 8, fill="#1765cc")
+    ImageDraw.Draw(hover).text((935, 308), "Add Component", fill="white", font=_font(20))
+    check("a hover highlight still matches", t.find(tracker.grey(hover), 0, 0)[0] == "same")
+    start = time.time()
+    result, box = t.find(shifted(0, -260), 0, 0)
+    took = time.time() - start
+    check("scrolled up 260px: the box follows exactly", result == "moved"
+          and box == (button[0], button[1] - 260, button[2], button[3] - 260), (result, box))
+    check("...searching the whole screen quickly", took < 0.5, f"{took:.2f}s")
+    t2 = tracker.Tracker.make(page, 0, 0, button)
+    big = shifted(-40, -30)
+    region = big[0:900, 500:1500]              # the watcher's quick look: just near the box
+    result, box = t2.find(region, 500, 0)
+    check("moved window, quick look near the box", result == "moved"
+          and box == (button[0] - 40, button[1] - 30, button[2] - 40, button[3] - 30), (result, box))
+    check("button gone: says so", tracker.Tracker.make(page, 0, 0, button).find(
+        tracker.grey(Image.new("RGB", (W, H), "white")), 0, 0)[0] == "gone")
+    row = (300 - p, 3 * 90 + 196 - p, 640 + p, 3 * 90 + 228 + p)    # "Result number 3"
+    tr = tracker.Tracker.make(page, 0, 0, row)
+    result, box = tr.find(shifted(0, -90), 0, 0)
+    check("look-alike rows: follows the right one, not its neighbour",
+          result == "moved" and box[1] == row[1] - 90, (result, box))
+    check("nothing to recognise (blank field): no tracker",
+          tracker.Tracker.make(Image.new("RGB", (W, H), "white"), 0, 0, (100, 100, 400, 140)) is None)
+    check("box off the screenshot: no tracker", tracker.Tracker.make(page, 0, 0, (W - 50, 10, W + 90, 60)) is None)
+    pill = tracker.Tracker.make(page, 0, 0, button, hint="wikipedia", box_visible=True)
+    check("keeps clear of the type hint when screenshots can see it",
+          pill.picture.shape[1] < t.picture.shape[1])
+    from eris.watcher import Watcher
+    w = Watcher.__new__(Watcher)
+    w.eris = types.SimpleNamespace(waiting="next")
+    w.lock, w.last_fire, w.keep_streak = threading.Lock(), 0.0, 0
+    w.rebase(delay=0)
+    blank = np.zeros((180, 320), dtype=np.int16)
+    w._step(blank, 100.0)
+    w._step(blank, 100.5, gone=True)
+    fired = any(w._step(blank, 100.5 + 0.5 * i) for i in range(1, 6))
+    check("watcher: the button vanishing counts as a change", fired)
+
+
+def test_which_screen():
+    from eris import screen
+    left_mon = {"left": -1920, "top": 0, "width": 1920, "height": 1080}
+    main = {"left": 0, "top": 0, "width": 2560, "height": 1440}
+    sct = types.SimpleNamespace(monitors=[{}, main, left_mon])
+    check("the monitor your app is on (not the one your mouse is on)",
+          screen.monitor_for(sct, (-1800, 100, -300, 900)) is left_mon)
+    check("a window across two screens: the one with most of it",
+          screen.monitor_for(sct, (-400, 100, 1800, 900)) is main)
+    small = screen.window_area((600, 300, 1800, 1100), main)
+    check("a smaller window: just it, plus a little around it",
+          small and small["left"] < 600 and small["width"] < 2560 and small["left"] >= 0, small)
+    check("a maximised app: the whole screen", screen.window_area((-8, -8, 2568, 1400), main) is None)
+    check("a tiny popup: the whole screen", screen.window_area((1000, 600, 1300, 800), main) is None)
+
+
 def test_hearing():
     from eris import ears as E
     rng = np.random.default_rng(0)

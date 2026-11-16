@@ -22,6 +22,57 @@ def test_click_box_moves_on():
     check("and the task ends on DONE", wait_for(lambda: e.waiting is None))
 
 
+def test_box_follows_its_button():
+    from PIL import Image, ImageDraw
+    from eris import config
+    shot = fake_shot()
+    shot.full = Image.new("RGB", (shot.width, shot.height), "white")
+    ImageDraw.Draw(shot.full).rounded_rectangle((204, 204, 396, 256), 6, fill="#1a73e8")
+    ImageDraw.Draw(shot.full).text((230, 222), "Add Component", fill="white")
+    config.REFINE = False
+    e, ui, _ = make_eris(shot)
+    e.brain.script = ["BOX 100 100 200 130\nTYPE rigid\nSAY Click Add Component.\nWAIT click"]
+    e.ask("add a rigidbody")
+    check("once the step is set, the box can follow its button",
+          wait_for(lambda: e.track is not None) and e.track.box == tuple(e.box))
+    old = e.box
+    moved = (old[0], old[1] - 120, old[2], old[3] - 120)
+    e.follow(moved)
+    check("following moves the box on screen", e.box == moved and ("move_box", *moved) in ui.cmds)
+    e._clear()
+    check("a cleared box stops tracking", e.track is None)
+    e._busy = 1
+    e.box = old
+    e.follow(moved)
+    check("no following while she's working on a new step", e.box == old)
+    e._busy = 0
+    config.TRACK = False
+    e._start_tracking(shot, old)
+    check("switched off in Settings: no tracking", e.track is None)
+    config.TRACK, config.REFINE = True, True
+
+
+def test_wrong_box():
+    from PIL import Image
+    from eris import settings
+    shot = fake_shot()
+    shot.full = Image.new("RGB", (shot.width, shot.height), "white")
+    e, _, _ = make_eris(shot)
+    e.wrong_box()
+    check("Wrong box with no box: nothing happens", not e.brain.asked)
+    e.brain.script = ["BOX 100 100 200 130\nSAY Click the ad.\nWAIT click",
+                      "BOX 300 300 400 330\nSAY Sorry, it's this one.\nWAIT click"]
+    e.ask("find wikipedia")
+    wait_for(lambda: e.waiting == "click")
+    e.wrong_box()
+    check("Wrong box: she looks again, told the last one was wrong",
+          wait_for(lambda: len(e.brain.asked) == 2) and e.brain.asked[1].startswith("That box was on the wrong"))
+    check("...and points somewhere new", wait_for(lambda: e.box == (600, 600, 800, 660)))
+    folder = settings.folder() / "mistakes"
+    check("the mistake is kept on your PC for the test lab",
+          wait_for(lambda: any(folder.glob("*.jpg")) and any(folder.glob("*.json"))))
+
+
 def test_click_while_she_talks():
     e, _, _ = make_eris()
     e.brain.gate = threading.Event()

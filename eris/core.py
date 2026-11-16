@@ -13,6 +13,7 @@ from pynput import keyboard
 from . import apps, config, elements, ocr, privacy, screen, settings, snap
 from .brain import Brain, locate
 from .speech import Voice, beep
+from .tracker import Tracker
 from .watcher import Watcher
 
 WATCH_PROMPT = ("(Automatic look: my screen changed while you were waiting.) Here's my screen "
@@ -21,6 +22,9 @@ WATCH_PROMPT = ("(Automatic look: my screen changed while you were waiting.) Her
                 "If I did something different, briefly tell me and guide me back.")
 MAX_LOOKS_PER_TASK = 30
 
+WRONG_BOX_PROMPT = ("That box was on the wrong thing. Here's my screen again. Look carefully, "
+                    "point at the right one and say what it is (so I can tell it's the one).")
+KEEP_MISTAKES = 30           # "Wrong box" screenshots kept for the test lab (oldest go first)
 NEXT_STEP_PROMPT = ("I did that step. Here's my screen now. Check it worked, then give the "
                     "next step, or DONE if the task is finished. If the screen is still loading, "
                     "reply with just KEEP and you'll get another look when it changes.")
@@ -35,6 +39,8 @@ class Eris:
         self.active = True
         self.gen = 0            # bumps on every new turn; stale turns abort themselves
         self.box = None         # current box in screen coords
+        self.track = None       # follows the box's button when you scroll (tracker.Tracker)
+        self.last_shot = None   # the screenshot of the step on screen (for "Wrong box")
         self.waiting = None     # None | "click" | "next"
         self.steps = 0
         self.talking = False
@@ -82,7 +88,7 @@ class Eris:
             return self.gen
 
     def _clear(self):
-        self.box = None
+        self.box = self.track = None
         self.waiting = None
         self.ui.cmd("clear_box")
 
@@ -143,6 +149,41 @@ class Eris:
                 self._turn_safe(my, NEXT_STEP_PROMPT)
         threading.Thread(target=later, daemon=True).start()
 
+    def wrong_box(self):
+        """You said the box is on the wrong thing: keep a copy for the test lab (on your
+        PC only), then she looks again knowing that."""
+        if not self.box or not self.active:
+            return
+        box, shot, history = self.box, self.last_shot, list(self.brain.history[-2:])
+        threading.Thread(target=self._save_mistake, args=(shot, box, history), daemon=True).start()
+        self.voice.stop()
+        self._clear()
+        self.auto_looks = 0
+        my = self._new_gen()
+        threading.Thread(target=self._turn_safe, args=(my, WRONG_BOX_PROMPT), daemon=True).start()
+
+    def _save_mistake(self, shot, box, history):
+        """Screenshot (private fields already blacked out) + what she said, in the
+        mistakes folder. Nothing is sent anywhere."""
+        if shot is None or shot.full is None:
+            return
+        try:
+            import json
+            folder = settings.folder() / "mistakes"
+            folder.mkdir(parents=True, exist_ok=True)
+            name = time.strftime("%Y%m%d-%H%M%S")
+            shot.full.convert("RGB").save(folder / f"{name}.jpg", quality=85)
+            (folder / f"{name}.json").write_text(json.dumps({
+                "box": [int(v) - o for v, o in zip(box, (shot.left, shot.top) * 2)],
+                "app": (shot.app or {}).get("name") if isinstance(shot.app, dict) else None,
+                "conversation": history}, indent=1), encoding="utf-8")
+            for old in sorted(folder.glob("*.jpg"))[:-KEEP_MISTAKES]:
+                old.unlink()
+                old.with_suffix(".json").unlink(missing_ok=True)
+            self.ui.log("debug", f"wrong box saved as mistakes/{name}")
+        except Exception as e:
+            self.ui.log("debug", f"couldn't save the wrong box: {e}")
+
     def auto_look(self):
         """Called by the watcher when the screen changed while waiting."""
         if not (self.active and self.waiting) or self.busy:
@@ -153,6 +194,21 @@ class Eris:
         self.task_looks += 1
         my = self._new_gen()
         threading.Thread(target=self._turn_safe, args=(my, WATCH_PROMPT, True), daemon=True).start()
+
+    def follow(self, box):
+        """The watcher saw the thing she pointed at move (you scrolled, or moved the
+        window): the box goes with it."""
+        if not self.box or self.busy:
+            return
+        self.box = box
+        self.ui.cmd("move_box", *box)
+
+    def _start_tracking(self, shot, box, hint=""):
+        """Remember what the thing she's pointing at looks like, so the box can follow it."""
+        self.track = None
+        if config.TRACK and box:
+            seen = getattr(self.ui, "box_in_screenshots", lambda: True)()
+            self.track = Tracker.make(shot.full, shot.left, shot.top, box, hint, seen)
 
     @property
     def busy(self):
@@ -191,16 +247,19 @@ class Eris:
                 self.waiting = self.waiting or "next"
             return
         shot = self._take_shot(allow_pre)
+        self.last_shot = shot
         step = Step(self, my, shot, soft, t0)
         step.times["screenshot"] = time.time() - t0
         if not step.alive():
             return
-        self.mon = (shot.left, shot.top, shot.width, shot.height)
+        self.mon = getattr(shot, "monitor", None) or (shot.left, shot.top, shot.width, shot.height)
         self.ui.cmd("monitor", *self.mon)
         if soft:
             self.ui.cmd("status", "Checking...")
         self.brain.turn(shot, text, step.on_event, step.alive)
         step.times["done"] = time.time() - t0
+        step.over = True
+        step.track()
         self.ui.log("debug", "speed: " + " · ".join(f"{k} {v:.2f}s" for k, v in step.times.items())
                     + f" ({config.BRAIN}{', automatic look' if soft else ''})")
         if step.avatar and step.final:
@@ -256,7 +315,7 @@ class Eris:
         if sys.platform == "win32" and (config.PRIVACY or config.ELEMENTS):
             helper = threading.Thread(target=ask_windows, daemon=True)
             helper.start()
-        img, mon = screen.capture()
+        img, mon = screen.capture(win["rect"] if win else None)
         if helper:
             helper.join(1.0)
         hide = scan.get("sensitive")
@@ -267,10 +326,17 @@ class Eris:
         found = scan.get("elements") or []
         if config.ELEMENTS and config.OCR and win and self._needs_reading(win, found):
             found = ocr.merge(found, self._read_window(img, mon, win))
-        shot = screen.finish(img, mon, snap=self.brain.snap(), max_w=self.brain.shot_width())
+        area = screen.window_area(win["rect"], mon) if win and self.brain.window_only() else None
+        if area:   # small models: just the app's window, so its words come out sharper
+            img = img.crop((area["left"] - mon["left"], area["top"] - mon["top"],
+                            area["left"] - mon["left"] + area["width"], area["top"] - mon["top"] + area["height"]))
+        shot = screen.finish(img, area or mon, snap=self.brain.snap(), max_w=self.brain.shot_width())
         shot.app = win
+        if area:
+            shot.monitor = (mon["left"], mon["top"], mon["width"], mon["height"])
         if config.ELEMENTS:
-            shot.elements = elements.pick(found, (mon["left"], mon["top"], mon["width"], mon["height"]))
+            a = area or mon
+            shot.elements = elements.pick(found, (a["left"], a["top"], a["width"], a["height"]))
         return shot
 
     @staticmethod
@@ -526,6 +592,8 @@ class Step:
         self.avatar = False        # the box is her new profile picture
         self.refining = False
         self.snapped = threading.Event()
+        self.hint = ""             # what she asked you to type
+        self.over = False          # the brain has finished this reply
         self.final = None          # where the box ends up after refining
 
     def alive(self):
@@ -601,6 +669,7 @@ class Step:
         self.e.ui.log("info", f"Eris will remember: {fact}")
 
     def on_type(self, text):
+        self.hint = text
         self.e.ui.cmd("type_hint", text)
         self.e.ui.log("hint", f"Type:  {text}")
 
@@ -623,7 +692,7 @@ class Step:
     def on_done(self, _):
         e = self.e
         self.ended = True
-        e.waiting = e.box = None
+        e.waiting = e.box = e.track = None
         e.ui.cmd("clear_box")
         e.ui.cmd("state", "ready")
         e.steps = 0
@@ -632,6 +701,7 @@ class Step:
     def _show(self, box):
         e = self.e
         e.box = self.final = box
+        e.track = None
         e.box_gen = self.my
         e.early_click = None
         e.ui.cmd("box", *box)
@@ -667,6 +737,14 @@ class Step:
             e.ui.log("debug", f"box refine failed: {ex}")
         finally:
             self.snapped.set()
+            self.track()
+
+    def track(self):
+        """Once the reply is over and the box has settled: let the box follow its button."""
+        e = self.e
+        if self.over and (not self.refining or self.snapped.is_set()) and self.alive() \
+                and self.final and e.box == self.final and e.track is None:
+            e._start_tracking(self.shot, self.final, self.hint)
 
     def _move(self, new):
         e = self.e
@@ -675,7 +753,7 @@ class Step:
         on_screen = e.box == self.final
         self.final = new
         if on_screen:
-            e.box = new
+            e.box, e.track = new, None
             e.ui.cmd("move_box", *new)
             if e.waiting and not e.busy:
                 e.watcher.rebase(delay=0.3)   # the box moving isn't you doing something

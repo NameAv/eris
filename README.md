@@ -28,6 +28,11 @@ After that, just open **Eris** from the Desktop. No command window.
   double-checks with a zoomed-in look.
 - **Her own personality and memory:** ask her to pick a profile picture and it becomes her
   avatar in the app. She remembers things between sessions (Settings, then Forget everything).
+- **The box follows its button.** Scroll or move the window and the box slides along with
+  the thing she pointed at, in a split second and without asking the AI again. If the button
+  disappears, she takes a fresh look. (Settings, then Guiding, then *Box follows what it points at*.)
+- **Wrong box?** Click *Wrong box* and she looks again, knowing the last one was wrong.
+- She looks at the screen your app is on, even when your mouse is over Eris on another screen.
 - When you need to type something, she shows exactly what to type inside the box.
 - **Next step / F9** is for steps that aren't a click (typing, dragging).
 - **Stop / F10** clears everything. **New task** makes her forget the last task.
@@ -41,6 +46,11 @@ After that, just open **Eris** from the Desktop. No command window.
 - Password managers (and any app you add in Settings, then Privacy) are never looked at.
 - The keyboard hook only keeps her hotkeys and Enter. Everything you type is dropped instantly.
 - The Free brain keeps everything on your PC.
+- Her red box is hidden from screenshots and screen recordings, so she never mistakes her own
+  box for part of the page. Want it in a recording or screen share? Settings, then Guiding.
+- *Wrong box* keeps that screenshot (private boxes already blacked out) in the `mistakes`
+  folder next to the log, on your PC only, so her real mistakes can become tests. The newest
+  30 are kept. Delete the folder any time.
 
 Detection uses Windows' accessibility info (the same info screen readers use). Apps that draw their
 own password boxes can't be detected, so use the blocklist or the Active switch for those.
@@ -95,6 +105,8 @@ updates come from here, so protect it.
      games). It reads only that app's window, only when needed, and never private fields.
      A picked word's box grows to fill the button it's on.
   3. For icons with no words, she points by sight and the box snaps onto real edges.
+- **Just the app's window.** When your app doesn't fill the screen, the Free brain is sent only
+  its window (plus a little around it). Same picture size, so the words come out sharper.
 - **Keep it on the graphics card.** Settings, then Brain, shows how much of the model fits. If it
   says less than 100% (Unity uses graphics memory too), click **Make Ollama lighter**, close
   GPU-heavy apps, or use `qwen3-vl:4b`.
@@ -158,6 +170,7 @@ If it can't connect, Eris switches to the built-in Windows voice by herself. Use
 - `eris/snap.py`: snaps boxes onto real edges (pixels)
 - `eris/uia.py`: asks Windows for exact element rectangles
 - `eris/watcher.py`: notices when your screen changes while she's waiting
+- `eris/tracker.py`: keeps the box on its button when you scroll or move a window
 - `eris/overlay.py`: the red box (four solid bars plus the in-box type hint)
 - `eris/ears.py`: push-to-talk and speech-to-text
 - `eris/speech.py`: natural and Windows voices (interruptible)

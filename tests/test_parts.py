@@ -76,6 +76,32 @@ def test_looks():
           np.asarray(hud).shape == np.asarray(round_).shape and not np.array_equal(np.asarray(hud), np.asarray(round_)))
 
 
+def test_hud_shapes():
+    from eris import config, glowbox, hud
+    check("small square things get the ring", hud.shape_for(38, 32) == "ring")
+    check("long thin things get the bar", hud.shape_for(400, 36) == "bar")
+    check("ordinary things get the frame", hud.shape_for(140, 40) == "frame")
+    check("big things get the panel", hud.shape_for(600, 400) == "panel")
+    check("a wide button is still a button (frame), a short field still a field (bar)",
+          hud.shape_for(228, 32, "button") == "frame" and hud.shape_for(120, 30, "text box") == "bar")
+    check("a big picture gets the panel", hud.shape_for(240, 160, "image") == "panel")
+    config.BOX_STYLE = "neon"
+    for w, h in [(38, 32), (400, 36), (140, 40), (600, 400)]:
+        img = glowbox.render(w, h, "rigid")
+        a = np.asarray(img)[..., 3]
+        edge = max(a[0].max(), a[-1].max(), a[:, 0].max(), a[:, -1].max())
+        if edge > 40 or a.max() < 200:
+            check(f"HUD box {hud.shape_for(w, h)} fits its picture", False, (w, h, int(edge)))
+            break
+    else:
+        check("every HUD shape fits its picture, with the hint", True)
+    img, x, y = glowbox.render_drop((100, 600, 220, 630), (100, 100, 200, 124))
+    check("HUD drag: one picture with room for the DROP HERE tab beside the target",
+          x <= 100 and x + img.width >= 200 + 80)
+    check("HUD notes draw", glowbox.render_note("scroll down", "down").width > glowbox.render_note("ok").width)
+    config.BOX_STYLE = "glow"
+
+
 def test_glitch_banner():
     from eris import config, glitch
     s = glitch.Streaks(480, 44)

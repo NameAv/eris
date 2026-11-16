@@ -45,7 +45,10 @@ After that, just open **Eris** from the Desktop. No command window.
 - **Two looks** (Settings, then Eris, then Look): *Crimson*, soft and rounded, or *Neon HUD*:
   black, neon red, sharp lines and streaks of red light drifting across the top, with a glitch
   now and then and as she starts listening or talking (*Glitch effects* switches that off). The box has a matching *Neon HUD* style
-  (Settings, then Guiding).
+  (Settings, then Guiding) whose shape suits what it points at: a ring for small icons and
+  buttons, a slim bar for search bars, fields and list rows, a frame with a tab for ordinary
+  buttons, corner brackets for big things. Drags, *drop here*, shortcut and scroll notes all
+  match it.
 
 ## Privacy
 
@@ -182,6 +185,7 @@ If it can't connect, Eris switches to the built-in Windows voice by herself. Use
 - `eris/watcher.py`: notices when your screen changes while she's waiting
 - `eris/tracker.py`: keeps the box on its button when you scroll or move a window
 - `eris/glitch.py`: the Neon look's drifting, glitching banner
+- `eris/hud.py`: the Neon HUD box shapes, drag connector and notes
 - `eris/overlay.py`: the red box (four solid bars plus the in-box type hint)
 - `eris/ears.py`: push-to-talk and speech-to-text
 - `eris/speech.py`: natural and Windows voices (interruptible)

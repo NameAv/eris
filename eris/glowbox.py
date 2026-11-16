@@ -28,25 +28,13 @@ def _rgb(hexcol):
     return tuple(int(hexcol[i:i + 2], 16) for i in (1, 3, 5))
 
 
-def _cut(rect, c):
-    """A rectangle with two opposite corners cut off (the neon HUD look)."""
-    x1, y1, x2, y2 = rect
-    return [(x1 + c, y1), (x2, y1), (x2, y2 - c), (x2 - c, y2), (x1, y2), (x1, y1 + c)]
-
-
-def _outline(d, rect, radius, colour, width, neon):
-    if neon:
-        pts = _cut(rect, max(3, radius))
-        d.line(pts + [pts[0]], fill=colour, width=width, joint="curve")
-    else:
-        d.rounded_rectangle(rect, radius, outline=colour, width=width)
-
-
-def render(w, h, hint="", grow=0, style=None):
+def render(w, h, hint="", grow=0, style=None, kind=None):
     """RGBA image of the box for a w x h target, with the glow around it.
-    grow: draw the box this many px bigger (for the pop-in). style: "neon" for the
-    angular HUD box, otherwise rounded."""
-    neon = (style or config.BOX_STYLE) == "neon"
+    grow: draw the box this many px bigger (for the pop-in). style "neon": the HUD
+    box (hud.py), whose shape suits the target; otherwise the rounded glowing box."""
+    if (style or config.BOX_STYLE) == "neon":
+        from . import hud
+        return hud.box(w, h, hint, grow, GLOW, kind)
     red = _rgb(config.BOX_COLOR)
     W, H = w + 2 * GLOW, h + 2 * GLOW
     radius = max(4, min(10, min(w, h) // 3))
@@ -54,14 +42,12 @@ def render(w, h, hint="", grow=0, style=None):
 
     # soft glow
     glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    _outline(ImageDraw.Draw(glow), (x1 - 1, y1 - 1, x2 + 1, y2 + 1), radius + 2, red + (210,), 6, neon)
+    ImageDraw.Draw(glow).rounded_rectangle((x1 - 1, y1 - 1, x2 + 1, y2 + 1), radius + 2,
+                                           outline=red + (210,), width=6)
     glow = glow.filter(ImageFilter.GaussianBlur(6))
     # only glow outwards: never dim the thing you need to see
     inside = Image.new("L", (W, H), 0)
-    if neon:
-        ImageDraw.Draw(inside).polygon(_cut((x1 + 1, y1 + 1, x2 - 1, y2 - 1), radius), fill=255)
-    else:
-        ImageDraw.Draw(inside).rounded_rectangle((x1 + 1, y1 + 1, x2 - 1, y2 - 1), radius, fill=255)
+    ImageDraw.Draw(inside).rounded_rectangle((x1 + 1, y1 + 1, x2 - 1, y2 - 1), radius, fill=255)
     a = np.asarray(glow.getchannel("A"), dtype=np.uint8).copy()
     a[np.asarray(inside) > 0] = 0
     glow.putalpha(Image.fromarray(a))
@@ -70,15 +56,11 @@ def render(w, h, hint="", grow=0, style=None):
     big = Image.new("RGBA", (W * SS, H * SS), (0, 0, 0, 0))
     d = ImageDraw.Draw(big)
     s = lambda *v: [int(round(a * SS)) for a in v]
-    _outline(d, s(x1 - 1.5, y1 - 1.5, x2 + 1.5, y2 + 1.5), (radius + 2) * SS, (25, 4, 8, 95), SS,
-             neon)                                                         # thin dark edge: shows on light/red UIs
-    _outline(d, s(x1, y1, x2, y2), radius * SS, red + (255,), 3 * SS, neon)
-    _outline(d, s(x1 + 3, y1 + 3, x2 - 3, y2 - 3), max(1, radius - 3) * SS, (255, 255, 255, 70), SS,
-             neon)                                                         # faint inner highlight
-    if neon:   # HUD tabs: short bright bars just outside two corners
-        tab = min(40, (x2 - x1) // 3)
-        d.line(s(x2 - tab, y1 - 5, x2, y1 - 5), fill=red + (255,), width=3 * SS)
-        d.line(s(x1, y2 + 5, x1 + tab, y2 + 5), fill=red + (255,), width=3 * SS)
+    d.rounded_rectangle(s(x1 - 1.5, y1 - 1.5, x2 + 1.5, y2 + 1.5), (radius + 2) * SS,
+                        outline=(25, 4, 8, 95), width=SS)                 # thin dark edge: shows on light/red UIs
+    d.rounded_rectangle(s(x1, y1, x2, y2), radius * SS, outline=red + (255,), width=3 * SS)
+    d.rounded_rectangle(s(x1 + 3, y1 + 3, x2 - 3, y2 - 3), max(1, radius - 3) * SS,
+                        outline=(255, 255, 255, 70), width=SS)             # faint inner highlight
     crisp = big.resize((W, H), Image.LANCZOS)
     img = Image.alpha_composite(glow, crisp)
 
@@ -122,6 +104,9 @@ def _edge_point(rect, toward):
 def render_drop(src, dst):
     """A drag: a dashed box where to drop, and a glowing arrow from what to drag.
     Screen rects in; (RGBA image, x, y) out."""
+    if config.BOX_STYLE == "neon":
+        from . import hud
+        return hud.drop(src, dst)
     red = _rgb(config.BOX_COLOR)
     pad = GLOW + 40
     x0, y0 = int(min(src[0], dst[0]) - pad), int(min(src[1], dst[1]) - pad)
@@ -163,6 +148,9 @@ def render_drop(src, dst):
 
 def render_note(text, way=None):
     """A glowing pill with a big chevron: "scroll down", "press Ctrl + S"."""
+    if config.BOX_STYLE == "neon":
+        from . import hud
+        return hud.note(text, way)
     red = _rgb(config.BOX_COLOR)
     f = _font(17)
     tw = int(f.getlength(text))
@@ -253,7 +241,7 @@ class GlowBox:
         # layered + click-through + never takes focus + not in the taskbar
         ex = u32.GetWindowLongW(self.hwnd, -20)
         u32.SetWindowLongW(self.hwnd, -20, ex | 0x80000 | 0x20 | 0x80 | 0x8000000 | 0x8)
-        self.rect, self.hint, self.alpha = None, "", 255
+        self.rect, self.hint, self.alpha, self.kind = None, "", 255, None
         self.jobs = []
         self.shown_at = 0.0
         if not self._show_image(Image.new("RGBA", (2, 2), (0, 0, 0, 0)), -32000, -32000):
@@ -290,7 +278,7 @@ class GlowBox:
 
     def _draw(self, grow=0, alpha=255):
         x1, y1, x2, y2 = self.rect
-        img = render(x2 - x1, y2 - y1, self.hint, grow)
+        img = render(x2 - x1, y2 - y1, self.hint, grow, kind=self.kind)
         self._show_image(img, x1 - GLOW, y1 - GLOW, alpha)
         self.alpha = alpha
 
@@ -300,10 +288,11 @@ class GlowBox:
         self.jobs = []
 
     # ---- public ----
-    def show(self, rect, hint=""):
-        """Pop in: starts a little bigger and transparent, settles onto the target."""
+    def show(self, rect, hint="", kind=None):
+        """Pop in: starts a little bigger and transparent, settles onto the target.
+        kind: what it is ("button", "text box"...), for the HUD box's shape."""
         self._cancel()
-        self.rect, self.hint = tuple(int(v) for v in rect), hint
+        self.rect, self.hint, self.kind = tuple(int(v) for v in rect), hint, kind
         self.shown_at = time.time()
         frames = [(10, 90), (6, 160), (3, 220), (1, 250), (0, 255)]
         for i, (grow, alpha) in enumerate(frames):

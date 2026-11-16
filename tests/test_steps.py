@@ -70,6 +70,18 @@ def test_drag_scroll_and_keys():
     check("a key with a box: shown inside it", wait_for(lambda: ("type_hint", "Enter", "press:  ") in ui.cmds))
 
 
+def test_box_knows_what_it_points_at():
+    shot = fake_shot(elements=[{"type": 50000, "name": "Add Component", "rect": (1200, 560, 1640, 608)},
+                               {"type": 50004, "name": "Search", "rect": (1180, 640, 1660, 688)}])
+    e, ui, _ = make_eris(shot)
+    e.brain.script = ["ELEMENT 1\nSAY Click Add Component.\nWAIT click", "ELEMENT 2\nTYPE rigid\nSAY Type rigid.\nWAIT next"]
+    e.ask("add a component")
+    check("a button from Windows' list: the box knows it's a button",
+          wait_for(lambda: any(c[0] == "box" and c[-1] == "button" for c in ui.cmds)))
+    e.ask("search")
+    check("...and a text box is a text box", wait_for(lambda: any(c[0] == "box" and c[-1] == "text box" for c in ui.cmds)))
+
+
 def test_wrong_box():
     from PIL import Image
     from eris import settings

@@ -164,12 +164,13 @@ class Overlay:
     def monitor(self, left, top, w, h):
         self.geom = (left, top, w, h)
 
-    def box(self, x1, y1, x2, y2, caption=""):
-        """Screen coords. Replaces any existing box (and its type hint)."""
+    def box(self, x1, y1, x2, y2, caption="", kind=None):
+        """Screen coords. Replaces any existing box (and its type hint). kind: what it
+        points at ("button", "text box"...), when known: the HUD box's shape suits it."""
         self.clear_box()
         self.rect = (int(x1), int(y1), int(x2), int(y2))
         if self.glow:
-            self.glow.show(self.rect, caption)
+            self.glow.show(self.rect, caption, kind)
             _raise(self.glow.win, [self.glow.hwnd])
         else:
             self._draw_bars()

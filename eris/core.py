@@ -645,7 +645,8 @@ class Step:
         if not exact:
             e.ui.log("debug", f"box: element {n} isn't in the list")
             return
-        self._show(exact)
+        from .uia import TYPE_NAMES
+        self._show(exact, TYPE_NAMES.get(shot.elements[n - 1].get("type")))
         self.refining = True   # an exact rectangle: no precision pass needed
         self.snapped.set()
         e.ui.log("debug", f"box: element {n} {shot.elements[n - 1]}")
@@ -728,13 +729,13 @@ class Step:
         e.steps = 0
 
     # ---- the box ----
-    def _show(self, box):
+    def _show(self, box, kind=None):
         e = self.e
         e.box = self.final = box
         e.track = None
         e.box_gen = self.my
         e.early_click = None
-        e.ui.cmd("box", *box)
+        e.ui.cmd("box", *box, "", kind) if kind else e.ui.cmd("box", *box)
 
     def _my_box(self):
         return self.e.box and self.e.box_gen == self.my

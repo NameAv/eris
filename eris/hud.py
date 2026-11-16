@@ -291,29 +291,30 @@ def _connector(length, variant):
     c = LINE_H / 2
     at = lambda f: L * f
     size = lambda f, most: min(L * f, most)
-    if variant == 0:                      # stepped: a line, a raised hatched step, a node, a slim bar
+    if variant == 0:                      # stepped: the line rises onto a hatched step, a node, a small step
         s1, s2 = at(0.12), at(0.12) + size(0.25, 120)
-        cv.line([(0, c), (s1, c), (s1 + 5, c - 5), (s2, c - 5), (s2 + 5, c)], col, 1.5)
-        _hatch(cv, s1 + 10, s2 - 6, c - 4, c, col)
         n = max(s2 + 30, at(0.55))
-        cv.line([(s2 + 5, c), (n - 5, c)], col, 1.5)
+        pts = [(0, c), (s1, c), (s1 + 5, c - 5), (s2, c - 5), (s2 + 5, c), (n - 4, c)]
+        cv.line(pts, col, 1.5)
+        _hatch(cv, s1 + 10, s2 - 6, c - 4, c, col)
         cv.arc(n, c, 4, 0, 360, col, 1.5)
-        b1 = n + 14
-        cv.line([(n + 4, c), (L, c)], col, 1.5)
-        if L - 6 > b1 + 20:                # a slim outlined bar riding on the line
-            cv.line([(b1, c), (b1 + 4, c - 4), (L - 10, c - 4), (L - 6, c)], col, 1.2)
-    elif variant == 1:                    # rails: two thin lines, an outlined slanted tab, a node
-        cv.line([(0, c - 1.5), (L, c - 1.5)], col, 1)
-        cv.line([(0, c + 2.5), (L, c + 2.5)], red + (150,), 1)
+        k1 = n + max(20, (L - n) * 0.45)
+        k2 = min(L - 12, k1 + size(0.12, 60))
+        if k2 > k1 + 12:
+            cv.line([(n + 4, c), (k1, c), (k1 + 4, c - 4), (k2, c - 4), (k2 + 4, c), (L, c)], col, 1.5)
+        else:
+            cv.line([(n + 4, c), (L, c)], col, 1.5)
+    elif variant == 1:                    # one line with an outlined slanted tab, a node and a small square
+        cv.line([(0, c), (L, c)], col, 1.5)
         bw = size(0.2, 90)
-        tab = [(4, c - 9), (4 + bw, c - 9), (11 + bw, c - 2), (11, c - 2)]
+        tab = [(4, c - 9), (4 + bw, c - 9), (11 + bw, c - 1), (11, c - 1)]
         cv.line(tab, col, 1.2, closed=True)
-        _hatch(cv, 14, 4 + bw, c - 8, c - 3, red + (190,), gap=5)
+        _hatch(cv, 14, 4 + bw, c - 8, c - 2, red + (190,), gap=5)
         n = max(18 + bw + 20, at(0.6))
         if n < L - 20:
-            cv.arc(n, c - 1.5, 4, 0, 360, col, 1.5)
+            cv.arc(n, c, 4, 0, 360, col, 1.5)
         if L > 120:
-            cv.line([(L - 30, c - 8), (L - 16, c - 8), (L - 16, c - 3), (L - 30, c - 3)], col, 1.2, closed=True)
+            cv.line([(L - 30, c - 7), (L - 18, c - 7), (L - 18, c - 1), (L - 30, c - 1)], col, 1.2, closed=True)
     else:                                 # ridged: one thin line that rises over a few bumps
         pts = [(0, c)]
         for f in (0.25, 0.6):
@@ -321,8 +322,6 @@ def _connector(length, variant):
             pts += [(x - 11, c), (x - 5, c - 6), (x + 7, c - 6), (x + 13, c)]
         pts.append((L, c))
         cv.line(pts, col, 1.5)
-        u = at(0.42)                       # and a short underline
-        cv.line([(u, c + 3), (u + 6, c + 6), (u + 34, c + 6)], col, 1.2)
     return cv.finish()
 
 

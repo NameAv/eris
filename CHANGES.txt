@@ -1,3 +1,4 @@
+v1.19.2: Each drag line is a single line now (no doubled-up lines or bars beside it).
 v1.19.1: The three drag lines are now all thin lines and outlines (no solid bars).
 v1.19.0: Neon HUD: every box shape comes in three versions (each new box takes the next), and the drag line is now one of three still HUD connector lines (stepped, rails, ridged) instead of the animated beam.
 v1.18.3: Neon HUD labels share one design: solid red plates for what to type, drag, drop here, shortcuts and scrolling. The drag beam is narrower and calmer, and its width gently swells and thins.

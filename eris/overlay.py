@@ -118,13 +118,27 @@ class Overlay:
         if sys.platform == "win32" and config.BOX_STYLE != "bars":
             try:
                 from .glowbox import GlowBox
-                self.glow = GlowBox(master)
-                self.extra = GlowBox(master)   # drag arrows, scroll and key notes
+                self.glow = GlowBox(master, self._glow_failed)
+                self.extra = GlowBox(master, self._glow_failed)   # drag arrows, scroll and key notes
             except Exception:
                 self.glow = self.extra = None   # plain bars instead
         self.hidden_from_capture = False
         self.apply_capture()
         master.after(1500, self._keep_on_top)
+
+    def _glow_failed(self, e):
+        """The HUD box couldn't be drawn: say why in the log and use the plain box from now on."""
+        log = getattr(self.master, "_write_log", None)
+        if log:
+            log("error", f"The HUD box couldn't be drawn ({e}); using the simple box instead.")
+        for g in (self.glow, self.extra):
+            if g:
+                g.hide()
+        self.glow = self.extra = None
+        if self.rect:                 # show the box that's up right now, the plain way
+            self._draw_bars()
+            for p in self.bars:
+                _raise(p, self.handles.get(p))
 
     def apply_capture(self):
         """Hide the box from screenshots, unless you want it in your recordings."""

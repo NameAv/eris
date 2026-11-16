@@ -42,7 +42,10 @@ def premultiplied_bgra(img):
 class GlowBox:
     """One layered window showing the rendered box. Call from the Tk thread."""
 
-    def __init__(self, master):
+    def __init__(self, master, on_fail=None):
+        """on_fail(error): called (once) if drawing ever fails, so the overlay can fall back
+        to the plain box instead of silently showing nothing."""
+        self.on_fail = on_fail
         import ctypes
         from ctypes import wintypes
         import tkinter as tk
@@ -129,10 +132,23 @@ class GlowBox:
                                      self.ct.byref(blend), 2)
 
     def _draw(self, grow=0, alpha=255):
+        if self.rect is None:
+            return
         x1, y1, x2, y2 = self.rect
-        img = render(x2 - x1, y2 - y1, self.hint, grow, kind=self.kind, variant=self.variant)
-        self._show_image(img, x1 - GLOW, y1 - GLOW, alpha)
+        try:
+            img = render(x2 - x1, y2 - y1, self.hint, grow, kind=self.kind, variant=self.variant)
+            if not self._show_image(img, x1 - GLOW, y1 - GLOW, alpha):
+                raise OSError("Windows wouldn't show the box window (UpdateLayeredWindow failed)")
+        except Exception as e:
+            self._failed(e)
+            return
         self.alpha = alpha
+
+    def _failed(self, e):
+        self._cancel()
+        if self.on_fail:
+            fail, self.on_fail = self.on_fail, None
+            fail(e)
 
     def _cancel(self):
         for j in self.jobs:
@@ -166,7 +182,11 @@ class GlowBox:
         """Show any picture (a drag arrow, a scroll arrow...) at a spot on screen."""
         self._cancel()
         self.rect = None
-        self._show_image(img, x, y)
+        try:
+            if not self._show_image(img, x, y):
+                raise OSError("Windows wouldn't show the picture (UpdateLayeredWindow failed)")
+        except Exception as e:
+            self._failed(e)
 
     def hide(self):
         self._cancel()

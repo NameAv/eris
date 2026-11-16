@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+import types
 
 from helpers import LineStream, check, done
 
@@ -325,6 +326,16 @@ def extras_on_screen():
     check("key badge near the top", 0 < placed[ov.note][1] < 200 and "Ctrl + S" in ov.note_label.cget("text"))
     ov.clear_box()
     check("clearing the box clears them all", ov.drop_rect is None and ov.extras_timer is None)
+    hidden, logged, real_log = [], [], app._write_log
+    app._write_log = lambda who, text: logged.append(text)
+    ov.glow = types.SimpleNamespace(hide=lambda: hidden.append(1))
+    ov.rect = (600, 200, 800, 240)
+    ov._glow_failed(OSError("test"))
+    app._write_log = real_log
+    check("if the HUD box fails, the plain box takes over (and the log says why)",
+          ov.glow is None and hidden and any("couldn't be drawn" in t for t in logged)
+          and placed.get(ov.bars[0]) == (600 - config.BOX_WIDTH, 200 - config.BOX_WIDTH))
+    ov.clear_box()
     ov._place = real
 
 

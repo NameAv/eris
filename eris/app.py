@@ -141,15 +141,27 @@ class App(ctk.CTk):
         return self._rects
 
     def _cache_rects(self):
-        rects = []
+        rects, hwnds = [], []
         for w in (self, getattr(self, "_settings", None)):
             try:
-                if w is not None and w.winfo_exists() and w.state() == "normal":
+                if w is not None and w.winfo_exists() and w.state() in ("normal", "zoomed"):
                     x, y = w.winfo_rootx(), w.winfo_rooty()
                     rects.append((x - 40, y - 50, x + w.winfo_width() + 20, y + w.winfo_height() + 20))
+                    if sys.platform == "win32":
+                        hwnds.append(int(w.wm_frame(), 16))
             except Exception:
                 pass
-        self._rects = rects
+        self._rects, self._hwnds = rects, hwnds
+
+    def hide_me_from_capture(self, hidden):
+        """Leave Eris's own windows out of screenshots while she takes one, so she sees the
+        app underneath even if her window covers it (your own screenshots aren't affected).
+        Windows 10 2004 and later; safe to call from any thread."""
+        if sys.platform != "win32":
+            return
+        import ctypes
+        for h in getattr(self, "_hwnds", []):
+            ctypes.windll.user32.SetWindowDisplayAffinity(h, 0x11 if hidden else 0)
 
     def _pump(self):
         """Carry out everything Eris asked the window to do. One bad message must never

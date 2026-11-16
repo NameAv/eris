@@ -436,7 +436,15 @@ class Eris:
         if sys.platform == "win32" and (config.PRIVACY or config.ELEMENTS):
             helper = threading.Thread(target=ask_windows, daemon=True)
             helper.start()
-        img, mon = screen.capture(win["rect"] if win else None)
+        hide_me = getattr(self.ui, "hide_me_from_capture", None)
+        if hide_me:          # see past her own window, even if it covers the app
+            hide_me(True)
+            time.sleep(0.05)
+        try:
+            img, mon = screen.capture(win["rect"] if win else None)
+        finally:
+            if hide_me:
+                hide_me(False)
         if helper:
             helper.join(1.0)
         hide = scan.get("sensitive")
@@ -884,6 +892,7 @@ class Step:
         e.box = self.final = box
         e.track = None
         e.box_gen = self.my
+        e.ui.log("debug", f"box shown at {box}")
         e.early_click = None
         e.ui.cmd("box", *box, "", kind) if kind else e.ui.cmd("box", *box)
 

@@ -117,6 +117,27 @@ def test_hud_shapes():
     check("a drag to the left draws too", left[..., 3].max() > 200)
 
 
+def test_box_never_silently_missing():
+    """If the HUD box can't be drawn (Windows-only code, so its window parts are stubbed),
+    it says so and the overlay is told, so it can fall back to the plain box."""
+    from eris import glowbox
+    failed = []
+    g = glowbox.GlowBox.__new__(glowbox.GlowBox)
+    g.master = types.SimpleNamespace(after=lambda ms, fn: 1, after_cancel=lambda j: None)
+    g.jobs, g.hint, g.kind, g.variant, g.alpha = [], "", None, 0, 255
+    g.on_fail = failed.append
+    g.rect = (100, 100, 300, 140)
+    g._show_image = lambda img, x, y, alpha=255: False          # Windows refuses
+    g._draw()
+    check("a box Windows won't show is reported", len(failed) == 1 and "UpdateLayeredWindow" in str(failed[0]))
+    g._draw()
+    check("...once", len(failed) == 1)
+    g.on_fail = failed.append
+    g._show_image = lambda img, x, y, alpha=255: True
+    g._draw()
+    check("a box that draws fine reports nothing", len(failed) == 1)
+
+
 def test_glitch_banner():
     from eris import config, glitch
     s = glitch.Streaks(480, 44)

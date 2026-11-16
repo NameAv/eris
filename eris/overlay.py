@@ -131,10 +131,11 @@ class Overlay:
         log = getattr(self.master, "_write_log", None)
         if log:
             log("error", f"The HUD box couldn't be drawn ({e}); using the simple box instead.")
-        for g in (self.glow, self.extra):
+        glows, self.glow, self.extra = (self.glow, self.extra), None, None
+        for g in glows:
             if g:
+                g.on_fail = None
                 g.hide()
-        self.glow = self.extra = None
         if self.rect:                 # show the box that's up right now, the plain way
             self._draw_bars()
             for p in self.bars:

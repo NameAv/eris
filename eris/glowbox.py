@@ -39,6 +39,55 @@ def premultiplied_bgra(img):
     return out.tobytes()
 
 
+_API = None
+
+
+def _api():
+    """The Windows drawing calls, set up once for the whole app. (Every box window must
+    share these: if each set up its own, the last one's definitions would replace the
+    others' and Windows would refuse their drawing calls.)"""
+    global _API
+    if _API is not None:
+        return _API
+    import ctypes
+    import types
+    from ctypes import wintypes
+    u32, g32 = ctypes.windll.user32, ctypes.windll.gdi32
+
+    class BLEND(ctypes.Structure):
+        _fields_ = [("op", ctypes.c_ubyte), ("flags", ctypes.c_ubyte),
+                    ("alpha", ctypes.c_ubyte), ("fmt", ctypes.c_ubyte)]
+
+    class BIH(ctypes.Structure):
+        _fields_ = [("biSize", wintypes.DWORD), ("biWidth", wintypes.LONG),
+                    ("biHeight", wintypes.LONG), ("biPlanes", wintypes.WORD),
+                    ("biBitCount", wintypes.WORD), ("biCompression", wintypes.DWORD),
+                    ("biSizeImage", wintypes.DWORD), ("biXPelsPerMeter", wintypes.LONG),
+                    ("biYPelsPerMeter", wintypes.LONG), ("biClrUsed", wintypes.DWORD),
+                    ("biClrImportant", wintypes.DWORD)]
+    u32.GetDC.restype = wintypes.HDC
+    u32.GetDC.argtypes = [wintypes.HWND]
+    u32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+    g32.CreateCompatibleDC.restype = wintypes.HDC
+    g32.CreateCompatibleDC.argtypes = [wintypes.HDC]
+    g32.CreateDIBSection.restype = wintypes.HBITMAP
+    g32.CreateDIBSection.argtypes = [wintypes.HDC, ctypes.c_void_p, wintypes.UINT,
+                                     ctypes.POINTER(ctypes.c_void_p), wintypes.HANDLE, wintypes.DWORD]
+    g32.SelectObject.restype = wintypes.HGDIOBJ
+    g32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
+    g32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+    g32.DeleteDC.argtypes = [wintypes.HDC]
+    u32.UpdateLayeredWindow.restype = wintypes.BOOL
+    u32.UpdateLayeredWindow.argtypes = [wintypes.HWND, wintypes.HDC, ctypes.POINTER(wintypes.POINT),
+                                        ctypes.POINTER(wintypes.SIZE), wintypes.HDC,
+                                        ctypes.POINTER(wintypes.POINT), wintypes.COLORREF,
+                                        ctypes.POINTER(BLEND), wintypes.DWORD]
+    u32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+    u32.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, wintypes.LONG]
+    _API = types.SimpleNamespace(u32=u32, g32=g32, ct=ctypes, wt=wintypes, BLEND=BLEND, BIH=BIH)
+    return _API
+
+
 class GlowBox:
     """One layered window showing the rendered box. Call from the Tk thread."""
 
@@ -46,8 +95,6 @@ class GlowBox:
         """on_fail(error): called (once) if drawing ever fails, so the overlay can fall back
         to the plain box instead of silently showing nothing."""
         self.on_fail = on_fail
-        import ctypes
-        from ctypes import wintypes
         import tkinter as tk
         self.master = master
         self.win = tk.Toplevel(master)
@@ -57,42 +104,10 @@ class GlowBox:
         self.win.deiconify()
         self.win.update_idletasks()
         self.hwnd = int(self.win.wm_frame(), 16)
-        u32, g32 = ctypes.windll.user32, ctypes.windll.gdi32
-        self.u32, self.g32, self.ct, self.wt = u32, g32, ctypes, wintypes
-
-        class BLEND(ctypes.Structure):
-            _fields_ = [("op", ctypes.c_ubyte), ("flags", ctypes.c_ubyte),
-                        ("alpha", ctypes.c_ubyte), ("fmt", ctypes.c_ubyte)]
-
-        class BIH(ctypes.Structure):
-            _fields_ = [("biSize", wintypes.DWORD), ("biWidth", wintypes.LONG),
-                        ("biHeight", wintypes.LONG), ("biPlanes", wintypes.WORD),
-                        ("biBitCount", wintypes.WORD), ("biCompression", wintypes.DWORD),
-                        ("biSizeImage", wintypes.DWORD), ("biXPelsPerMeter", wintypes.LONG),
-                        ("biYPelsPerMeter", wintypes.LONG), ("biClrUsed", wintypes.DWORD),
-                        ("biClrImportant", wintypes.DWORD)]
-        self.BLEND, self.BIH = BLEND, BIH
-        u32.GetDC.restype = wintypes.HDC
-        u32.GetDC.argtypes = [wintypes.HWND]
-        u32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
-        g32.CreateCompatibleDC.restype = wintypes.HDC
-        g32.CreateCompatibleDC.argtypes = [wintypes.HDC]
-        g32.CreateDIBSection.restype = wintypes.HBITMAP
-        g32.CreateDIBSection.argtypes = [wintypes.HDC, ctypes.c_void_p, wintypes.UINT,
-                                         ctypes.POINTER(ctypes.c_void_p), wintypes.HANDLE,
-                                         wintypes.DWORD]
-        g32.SelectObject.restype = wintypes.HGDIOBJ
-        g32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
-        g32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
-        g32.DeleteDC.argtypes = [wintypes.HDC]
-        u32.UpdateLayeredWindow.restype = wintypes.BOOL
-        u32.UpdateLayeredWindow.argtypes = [wintypes.HWND, wintypes.HDC,
-                                            ctypes.POINTER(wintypes.POINT),
-                                            ctypes.POINTER(wintypes.SIZE), wintypes.HDC,
-                                            ctypes.POINTER(wintypes.POINT), wintypes.COLORREF,
-                                            ctypes.POINTER(BLEND), wintypes.DWORD]
-        u32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
-        u32.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, wintypes.LONG]
+        api = _api()
+        u32 = api.u32
+        self.u32, self.g32, self.ct, self.wt = api.u32, api.g32, api.ct, api.wt
+        self.BLEND, self.BIH = api.BLEND, api.BIH
         # layered + click-through + never takes focus + not in the taskbar
         ex = u32.GetWindowLongW(self.hwnd, -20)
         u32.SetWindowLongW(self.hwnd, -20, ex | 0x80000 | 0x20 | 0x80 | 0x8000000 | 0x8)
@@ -127,9 +142,12 @@ class GlowBox:
         return ok
 
     def _set_alpha(self, alpha):
-        blend = self.BLEND(0, 0, int(alpha), 1)
-        self.u32.UpdateLayeredWindow(self.hwnd, None, None, None, None, None, 0,
-                                     self.ct.byref(blend), 2)
+        try:
+            blend = self.BLEND(0, 0, int(alpha), 1)
+            self.u32.UpdateLayeredWindow(self.hwnd, None, None, None, None, None, 0,
+                                         self.ct.byref(blend), 2)
+        except Exception as e:
+            self._failed(e)
 
     def _draw(self, grow=0, alpha=255):
         if self.rect is None:
@@ -191,7 +209,10 @@ class GlowBox:
     def hide(self):
         self._cancel()
         self.rect, self.hint = None, ""
-        self._show_image(Image.new("RGBA", (2, 2), (0, 0, 0, 0)), -32000, -32000)
+        try:
+            self._show_image(Image.new("RGBA", (2, 2), (0, 0, 0, 0)), -32000, -32000)
+        except Exception as e:
+            self._failed(e)
 
     def _pulse(self):
         """Gentle breathing glow so it stays noticeable without being annoying."""

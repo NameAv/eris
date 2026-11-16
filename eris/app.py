@@ -170,6 +170,8 @@ class App(ctk.CTk):
         if self._ticks % 15 == 0:   # about twice a second is plenty
             self._cache_rects()
         for _ in range(200):
+            if getattr(self, "closing", False):
+                return
             try:
                 name, args = self.q.get_nowait()
             except queue.Empty:
@@ -563,6 +565,7 @@ class App(ctk.CTk):
     def _quit(self):
         self.eris.stop_call()
         self.eris.cancel()
+        self.closing = True         # the window is going: the queue's leftovers are dropped
         self.destroy()
 
     # ---------- updates ----------

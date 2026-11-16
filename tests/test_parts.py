@@ -138,6 +138,38 @@ def test_box_never_silently_missing():
     check("a box that draws fine reports nothing", len(failed) == 1)
 
 
+def test_box_windows_share_their_setup():
+    """Every box window must share one set of Windows drawing definitions: when each made
+    its own, the second box window broke the first ("expected LP_BLEND instance")."""
+    import ctypes
+    import inspect
+    from eris import glowbox
+
+    class Fn:
+        pass
+
+    class Lib:
+        def __getattr__(self, name):
+            f = Fn()
+            setattr(self, name, f)
+            return f
+    had = hasattr(ctypes, "windll")
+    old = getattr(ctypes, "windll", None)
+    ctypes.windll = types.SimpleNamespace(user32=Lib(), gdi32=Lib())
+    glowbox._API = None
+    try:
+        first, second = glowbox._api(), glowbox._api()
+        check("the drawing setup is made once and shared", first is second and first.BLEND is second.BLEND)
+    finally:
+        glowbox._API = None
+        if had:
+            ctypes.windll = old
+        else:
+            del ctypes.windll
+    check("box windows don't define their own copies",
+          "class BLEND" not in inspect.getsource(glowbox.GlowBox.__init__))
+
+
 def test_glitch_banner():
     from eris import config, glitch
     s = glitch.Streaks(480, 44)

@@ -1,4 +1,4 @@
-"""The red box, drawn as four thin solid bars (+ a caption bubble) around the target.
+"""The red box: the rounded glowing one (glowbox.py), or plain bars as a fallback.
 
 No see-through full-screen window: each piece is a small solid always-on-top
 window, which works reliably on every Windows setup. Only call these methods
@@ -193,9 +193,6 @@ class Overlay:
         else:                                            # too small: just below it
             x, y = x1, y2 + config.BOX_WIDTH + 4
         self._place(self.cap, x, y, w, h)
-
-    def caption(self, text):   # kept for older callers
-        self.type_hint(text, prefix="")
 
     def clear_box(self):
         if self.box_timer:

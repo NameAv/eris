@@ -95,6 +95,17 @@ updates come from here, so protect it.
 - She uses short instructions written for small models, steady answers, and short memory, and
   keeps the model loaded for an hour.
 
+## Test lab
+
+**Settings, then App, then Test Eris** runs 15 tricky tests on made-up screens with her current
+brain. The tests cover a Google results page with a sponsored ad, a site's own search box vs the
+address bar, a login page, a fake "virus" scam pop-up, a page with hidden instructions aimed at AI,
+and a Unity editor (select the object, Add Component, Rigidbody vs Rigidbody 2D, the tiny play
+button). Each reply is graded: did the box land on the right thing, did she avoid the ad, refuse
+the password, spot the scam, ignore the hidden instructions, use the right format, and how fast
+was she. The report (in the log folder, under `tests`) shows exactly where she needs work.
+Also runnable as `python -m eris.bench`.
+
 ## Voice
 
 *Natural* uses Microsoft's free neural voices (Ava, Emma, Sonia...), so it needs internet.
@@ -126,6 +137,7 @@ If it can't connect, Eris switches to the built-in Windows voice by herself. Use
 - `eris/protocol.py`: parses `BOX / SAY / WAIT / DONE` lines as they stream in
 - `eris/privacy.py`: looking away from and blacking out private fields
 - `eris/glowbox.py`: the rounded, glowing box
+- `eris/bench.py`: the test lab
 - `eris/elements.py`: Windows' numbered list of clickable things
 - `eris/snap.py`: snaps boxes onto real edges (pixels)
 - `eris/uia.py`: asks Windows for exact element rectangles

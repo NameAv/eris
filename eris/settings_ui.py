@@ -1,6 +1,5 @@
 """Eris's settings window: a sidebar of sections, and every change saves instantly."""
 import threading
-import time
 import webbrowser
 
 import customtkinter as ctk
@@ -133,8 +132,9 @@ class SettingsWindow(ctk.CTkToplevel):
         self._jobs[name] = self.after(ms, fn)
 
     def _ui(self, fn):
-        """Run fn on the Tk thread (from a background thread), if the window still exists."""
-        self.after(0, lambda: self.winfo_exists() and fn())
+        """Run fn on the window's thread (called from background threads). Tk itself must
+        never be touched from another thread, so this goes through the app's safe queue."""
+        self.app.cmd("run", lambda: self.winfo_exists() and fn())
 
     def destroy(self):
         self._stop_capture()
@@ -274,7 +274,6 @@ class SettingsWindow(ctk.CTkToplevel):
 
             c = self.card("Model", "Pick one, then copy its download command into Command Prompt "
                                    "(only needed once per model).")
-            self.installed = []
             for name, size, about in config.LOCAL_MODELS:
                 chosen = config.LOCAL_MODEL == name
                 r = ctk.CTkFrame(c, fg_color=T.CARD_2 if chosen else T.CARD, corner_radius=12,
@@ -717,10 +716,47 @@ class SettingsWindow(ctk.CTkToplevel):
         right = self.row(c, "Logs", "If something goes wrong, send Claude the eris.log file from here.")
         self.button(right, "Open log folder", lambda: webbrowser.open(settings.folder().as_uri())).pack()
 
+        c = self.card("Test Eris", "15 tricky tests on made-up screens (search results with ads, a "
+                                   "scam pop-up, a login page, Unity...) with her current brain. "
+                                   "Takes a minute or two. On Claude it costs a few cents; the "
+                                   "Free brain is free.")
+        row = ctk.CTkFrame(c, fg_color="transparent")
+        row.pack(fill="x", pady=(6, 0))
+        self.bench_btn = self.button(row, "Run the tests", self._run_bench, primary=True, width=130)
+        self.bench_btn.pack(side="left")
+        self.bench_open = self.button(row, "Open report", lambda: None, width=110)
+        self.bench_status = self.status_line(c)
+
         c = self.card("Start over")
         right = self.row(c, "Reset all settings", "Back to how Eris came. Your API key and her memories stay.")
         self.reset_btn = self.button(right, "Reset", self._reset)
         self.reset_btn.pack()
+
+    def _run_bench(self):
+        """Run the test lab in the background and show where the report went."""
+        self.bench_btn.configure(state="disabled", text="Testing...")
+
+        def progress(msg):
+            self._ui(lambda: self.bench_status.configure(text=msg, text_color=T.MUTED))
+
+        def work():
+            from . import bench
+            try:
+                results = bench.run_all(progress=progress)
+                path, passed, total = bench.report(results)
+                msg, colour = (f"Passed {passed} of {total}. The report is saved; send it to Claude to "
+                               "improve her.", "#4fd18b" if passed == total else T.GOLD)
+            except Exception as e:
+                path, msg, colour = None, f"The test couldn't run: {e}", T.ERROR
+
+            def done():
+                self.bench_btn.configure(state="normal", text="Run the tests")
+                self.bench_status.configure(text=msg, text_color=colour)
+                if path:
+                    self.bench_open.configure(command=lambda: webbrowser.open(path.as_uri()))
+                    self.bench_open.pack(side="left", padx=8)
+            self._ui(done)
+        threading.Thread(target=work, daemon=True).start()
 
     def _check_updates(self):
         self.update_status.configure(text="Checking...", text_color=T.MUTED)

@@ -3,13 +3,12 @@
 Talks to the window only through ui.cmd(...) and ui.log(...), both thread-safe.
 """
 import queue
+import sys
 import threading
 import time
 import traceback
 
 from pynput import keyboard
-
-import sys
 
 from . import config, elements, privacy, screen, settings, snap
 from .brain import Brain, locate
@@ -37,7 +36,6 @@ class Eris:
         self.gen = 0            # bumps on every new turn; stale turns abort themselves
         self.box = None         # current box in screen coords
         self.waiting = None     # None | "click" | "next"
-        self.caption = ""
         self.steps = 0
         self.talking = False
         self.lock = threading.Lock()
@@ -52,6 +50,7 @@ class Eris:
         self.hotkeys_paused = False   # while you're choosing a new key in Settings
         self._press_token = None
         self._want_hold = False
+        self._hold_shown = None
         self.call = None              # call mode: always listening (see ears.Call)
         self.pre_shot = None     # (token, time, Shot) taken when you let go of the talk key
         self.pre_token = None
@@ -189,7 +188,8 @@ class Eris:
                 self.ui.cmd("state", "guiding")
                 self.ui.log("hint", f"I looked away ({why}). Press {config.NEXT_KEY.upper()} "
                                     "when you're done and I'll look again.")
-                self.voice.say("I'll look away while you do that. Press F9 when you're done.")
+                self.voice.say("I'll look away while you do that. Press "
+                               f"{config.NEXT_KEY.upper()} when you're done.")
                 self.waiting = self.waiting or "next"
             return
         shot = self._take_shot(allow_pre)
@@ -328,7 +328,7 @@ class Eris:
         self.ui.log("debug", "speed: " + " · ".join(f"{k} {v:.2f}s" for k, v in times.items())
                     + f" ({config.BRAIN}{', automatic look' if soft else ''})")
         if st["avatar"] and st["final"]:
-            threading.Thread(target=self._take_avatar, args=(shot, st, my), daemon=True).start()
+            threading.Thread(target=self._take_avatar, args=(shot, st), daemon=True).start()
         if not alive():
             return
         self.ui.cmd("status", "")
@@ -400,7 +400,7 @@ class Eris:
         except Exception:
             self.pre_shot = None
 
-    def _take_avatar(self, shot, st, my):
+    def _take_avatar(self, shot, st):
         """She picked a profile picture: cut it out of the screenshot (once the box
         has snapped onto it) and make it her picture in the app."""
         if st["refining"]:
@@ -474,23 +474,13 @@ class Eris:
 
     # ---------- listening ----------
     def start_listening(self):
-        if self.talking or not self.active:
-            return
+        """The talk key went down: push-to-talk straight away."""
         if not self.ears:
-            self.ui.log("hint", "Speech model is still loading (or no mic). You can type instead.")
+            self.ui.log("hint", "My ears are still loading (or there's no mic). You can type instead.")
             return
-        self.talking = True
-        self.cancel()
-        beep("start")
-        threading.Thread(target=self.brain.prewarm, daemon=True).start()   # wake the brain up now
-        self.ui.cmd("status", "Listening...")
-        self.ui.cmd("state", "listening")
-        try:
-            self.ears.start()
-        except Exception as e:
-            self.talking = False
-            self.ui.log("error", f"Couldn't open the microphone: {e}")
-            self.ui.cmd("status", "")
+        self._press_token = object()
+        if self.begin_hold():
+            self.confirm_hold()
 
     # The talk button. Opening the microphone can take a moment on Windows, so it happens
     # on a helper thread; a token makes sure a quick click never leaves it recording.
@@ -531,7 +521,7 @@ class Eris:
     def confirm_hold(self):
         """Still held after a moment: it's push-to-talk."""
         self._want_hold = True
-        if not self.talking or getattr(self, "_hold_shown", None) is self._press_token:
+        if not self.talking or self._hold_shown is self._press_token:
             return
         self._hold_shown = self._press_token
         self._new_gen()

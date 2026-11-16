@@ -27,7 +27,7 @@ VOICES = {  # label in settings -> edge-tts voice name
     "Natasha (Australia)": "en-AU-NatashaNeural",
 }
 ACKS = ["Mm-hm.", "On it.", "Okay, let me look.", "Sure thing.", "One sec."]
-PREVIEW = "Hi, I'm Eris. Hold F8 and ask me anything, and I'll show you where to click."
+PREVIEW = "Hi, I'm Eris. Ask me anything, and I'll show you exactly where to click."
 
 
 class Voice:
@@ -41,6 +41,7 @@ class Voice:
         self.warned = False
         self.natural_off_until = 0.0   # after a failure, use the Windows voice for a bit
         self.playing = False           # a natural-voice clip is playing right now
+        self.fetching = False          # a sentence is being turned into speech right now
         self._first = None             # (gen, time) of the first line queued since the last stop
         self.sapi_speaking = False     # the Windows voice is speaking right now
         threading.Thread(target=self.prepare_acks, daemon=True).start()
@@ -105,7 +106,7 @@ class Voice:
 
     def busy(self):
         """Is she talking (or about to)? Call mode doesn't listen while she is."""
-        return (self.playing or self.sapi_speaking or not self.text_q.empty()
+        return (self.playing or self.fetching or self.sapi_speaking or not self.text_q.empty()
                 or not self.audio_q.empty() or not self.sapi_q.empty())
 
     def stop(self):
@@ -131,6 +132,7 @@ class Voice:
                 continue
             n += 1
             path = os.path.join(self.tmp, f"s{n % 50}.mp3")
+            self.fetching = True
             try:
                 import edge_tts
                 rate = f"{int(config.VOICE_RATE) * 6:+d}%"
@@ -147,6 +149,8 @@ class Voice:
                                      "using the Windows voice. Needs internet.")
                 if g == self.gen:
                     self.sapi_q.put(("say", text))
+            finally:
+                self.fetching = False
 
     def _play_loop(self):
         if sys.platform != "win32":

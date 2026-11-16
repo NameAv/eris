@@ -52,9 +52,11 @@ def typing_secret():
         return val
     try:
         from . import uia
-        val = uia.get().focus_is_sensitive()
+        answer = uia.get("privacy").focus_is_sensitive()
     except Exception:
-        val = False
+        answer = None
+    if answer is not None:     # no answer in time: keep the last known one, don't assume "safe"
+        val = bool(answer)
     _focus_cache = (time.time(), val)
     return val
 
@@ -86,7 +88,7 @@ def hidden_fields():
         return rects
     try:
         from . import uia
-        found = uia.get().sensitive_rects()
+        found = uia.get("privacy").sensitive_rects()
     except Exception:
         found = None
     if found is None:      # Windows didn't answer in time: don't cache a guess

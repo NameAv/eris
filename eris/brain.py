@@ -131,9 +131,9 @@ SAY No need for the full address, just the name.
 WAIT next"""
 
 LOCATE_SYSTEM = """You find one element in a zoomed-in part of a screenshot. Reply with \
-ONLY one line: BOX x1 y1 x2 y2 - pixel coordinates in THIS image, tight around exactly \
-that element (the button, link text, text field or image itself, nothing around it). \
-If it isn't in this image, reply NONE."""
+ONLY one line: BOX x1 y1 x2 y2 - {COORDS}, tight around exactly that element (the \
+button, link text, text field or image itself, nothing around it). If it isn't in this \
+image, reply NONE."""
 
 # ---------- the free local brain (Ollama) ----------
 # Small models do better with short, plain instructions and a worked example.
@@ -183,6 +183,15 @@ LOCAL_OPTIONS = {
 _info = {}
 
 
+def ollama(path, body=None, timeout=10):
+    """One request to the local Ollama server: GET if there's no body, else POST JSON.
+    Returns the open response (callers read or stream it)."""
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(config.OLLAMA_URL.rstrip("/") + path, data=data,
+                                 headers={"Content-Type": "application/json"})
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
 def local_info(model=None):
     """What kind of local model this is: how it gives positions, and whether it thinks."""
     model = model or config.LOCAL_MODEL
@@ -190,10 +199,7 @@ def local_info(model=None):
         return _info[model]
     guess = {"coords": "norm1000" if "qwen3" in model.lower() else "pixels", "thinking": False}
     try:
-        body = json.dumps({"model": model}).encode()
-        req = urllib.request.Request(config.OLLAMA_URL.rstrip("/") + "/api/show", data=body,
-                                     headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=5) as r:
+        with ollama("/api/show", {"model": model}, timeout=5) as r:
             data = json.loads(r.read())
         d = data.get("details") or {}
         fam = " ".join([str(d.get("family", "")), " ".join(d.get("families") or []),
@@ -223,7 +229,7 @@ def gpu_fit(model=None):
     if it isn't loaded. Below 1 means part of it runs on the (much slower) processor."""
     model = model or config.LOCAL_MODEL
     try:
-        with urllib.request.urlopen(config.OLLAMA_URL.rstrip("/") + "/api/ps", timeout=3) as r:
+        with ollama("/api/ps", timeout=3) as r:
             for m in json.loads(r.read()).get("models", []):
                 if model in (m.get("name"), m.get("model")) or m.get("name", "").split(":")[0] == model:
                     size = m.get("size") or 0
@@ -285,22 +291,15 @@ class Brain:
         self.last_call = time.time()
         try:
             if config.BRAIN == "local":
-                body = json.dumps({"model": config.LOCAL_MODEL, "keep_alive": "60m"}).encode()
-                req = urllib.request.Request(config.OLLAMA_URL.rstrip("/") + "/api/generate",
-                                             data=body, headers={"Content-Type": "application/json"})
-                urllib.request.urlopen(req, timeout=60).read()
+                with ollama("/api/generate", {"model": config.LOCAL_MODEL, "keep_alive": "60m"},
+                            timeout=60) as r:
+                    r.read()
                 return
             client = self._get_client()
-            if not client:
-                return
-            messages = self._cached_history() + [{"role": "user", "content": "(warming up)"}]
-            req = dict(max_tokens=0, system=self._system(), messages=messages,
-                       output_config={"effort": config.EFFORT})
-            if config.BRAIN == "claude-cheap":
-                client.messages.create(model=config.CHEAP_MODEL, **req, **no_thinking())
-            else:
-                client.beta.messages.create(model=config.MODEL, betas=["server-side-fallback-2026-07-01"],
-                                            fallbacks="default", **req)
+            if client:
+                messages = self._cached_history() + [{"role": "user", "content": "(warming up)"}]
+                claude(client, "create", max_tokens=0, system=self._system(), messages=messages,
+                       output_config={"effort": config.EFFORT}, **no_thinking())
         except Exception as e:
             self.log("debug", f"prewarm skipped: {e}")
 
@@ -365,18 +364,12 @@ class Brain:
                                          "data": shot.b64}},
             {"type": "text", "text": user_text},
         ]}]
-        common = dict(max_tokens=config.MAX_TOKENS, system=self._system(),
-                      messages=messages, output_config={"effort": config.EFFORT})
         reply = []
         try:
-            if config.BRAIN == "claude-cheap":
-                cm = client.messages.stream(model=config.CHEAP_MODEL, **common, **no_thinking())
-            else:
-                extra = {"speed": "fast"} if config.FAST_MODE else {}
-                cm = client.beta.messages.stream(
-                    model=config.MODEL, betas=["server-side-fallback-2026-07-01"],
-                    fallbacks="default", **common, **extra)
-            with cm as stream:
+            fast = {"speed": "fast"} if config.FAST_MODE and config.BRAIN == "claude" else {}
+            with claude(client, "stream", max_tokens=config.MAX_TOKENS, system=self._system(),
+                        messages=messages, output_config={"effort": config.EFFORT},
+                        **no_thinking(), **fast) as stream:
                 for chunk in stream.text_stream:
                     if not alive():
                         return None  # user moved on; drop this reply
@@ -416,12 +409,9 @@ class Brain:
                 "keep_alive": "60m", "options": LOCAL_OPTIONS}
         if local_info()["thinking"]:
             body["think"] = False          # thinking models: answer straight away
-        body = json.dumps(body).encode()
-        req = urllib.request.Request(config.OLLAMA_URL.rstrip("/") + "/api/chat", data=body,
-                                     headers={"Content-Type": "application/json"})
         reply = []
         try:
-            with urllib.request.urlopen(req, timeout=180) as r:
+            with ollama("/api/chat", body, timeout=180) as r:
                 for raw in r:
                     if not alive():
                         return None
@@ -506,36 +496,27 @@ def locate(brain, shot, box, what, alive):
     norm = config.BRAIN == "local" and local_info()["coords"] == "norm1000"
     try:
         if config.BRAIN == "local":
-            system = LOCATE_SYSTEM.replace("pixel coordinates in THIS image",
-                                           "coordinates on a 0-1000 scale of THIS image" if norm
-                                           else "pixel coordinates in THIS image")
             body = {"model": config.LOCAL_MODEL, "stream": False, "keep_alive": "60m",
                     "options": {"temperature": 0, "num_ctx": 4096, "num_predict": 40},
-                    "messages": [{"role": "system", "content": system},
+                    "messages": [{"role": "system", "content": LOCATE_SYSTEM.replace(
+                                     "{COORDS}", COORDS_TEXT["norm1000" if norm else "pixels"])},
                                  {"role": "user", "content": prompt, "images": [b64]}]}
             if local_info()["thinking"]:
                 body["think"] = False
-            req = urllib.request.Request(config.OLLAMA_URL.rstrip("/") + "/api/chat",
-                                         data=json.dumps(body).encode(),
-                                         headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=30) as r:
+            with ollama("/api/chat", body, timeout=30) as r:
                 text = json.loads(r.read()).get("message", {}).get("content", "")
         else:
             client = brain._get_client()
             if not client:
                 return None
-            req = dict(max_tokens=2000, system=LOCATE_SYSTEM, output_config={"effort": "low"},
-                       messages=[{"role": "user", "content": [
-                           {"type": "image", "source": {"type": "base64",
-                                                        "media_type": "image/jpeg", "data": b64}},
-                           {"type": "text", "text": prompt}]}])
-            if config.BRAIN == "claude-cheap":
-                msg = client.messages.create(model=config.CHEAP_MODEL, **req,
-                                             thinking={"type": "disabled"})
-            else:
-                msg = client.beta.messages.create(
-                    model=config.MODEL, betas=["server-side-fallback-2026-07-01"],
-                    fallbacks="default", **req)
+            thinking = {"thinking": {"type": "disabled"}} if config.BRAIN == "claude-cheap" else {}
+            msg = claude(client, "create", max_tokens=2000,
+                         system=LOCATE_SYSTEM.replace("{COORDS}", COORDS_TEXT["pixels"]),
+                         output_config={"effort": "low"}, **thinking,
+                         messages=[{"role": "user", "content": [
+                             {"type": "image", "source": {"type": "base64",
+                                                          "media_type": "image/jpeg", "data": b64}},
+                             {"type": "text", "text": prompt}]}])
             if msg.stop_reason == "refusal":
                 return None
             text = "".join(b.text for b in msg.content if b.type == "text")
@@ -560,10 +541,22 @@ def locate(brain, shot, box, what, alive):
             int(left + x2 * sx) + p, int(top + y2 * sy) + p)
 
 
+def claude(client, kind, **request):
+    """One Claude request ("create" or "stream") on the chosen brain: Haiku for Cheap;
+    Opus for Best, with the server-side fallback that re-runs a declined request on
+    another model."""
+    if config.BRAIN == "claude-cheap":
+        return getattr(client.messages, kind)(model=config.CHEAP_MODEL, **request)
+    request.pop("thinking", None)          # Opus 5.5 always thinks; effort is the control
+    return getattr(client.beta.messages, kind)(
+        model=config.MODEL, betas=["server-side-fallback-2026-07-01"], fallbacks="default",
+        **request)
+
+
 def local_models():
     """Names of models installed in Ollama, or None if Ollama isn't running."""
     try:
-        with urllib.request.urlopen(config.OLLAMA_URL.rstrip("/") + "/api/tags", timeout=3) as r:
+        with ollama("/api/tags", timeout=3) as r:
             return [m["name"] for m in json.loads(r.read()).get("models", [])]
     except Exception:
         return None

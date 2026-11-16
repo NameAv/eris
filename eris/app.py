@@ -6,7 +6,6 @@ import sys
 import threading
 import time
 import tkinter as tk
-import webbrowser
 
 # Must happen before any window/screenshot so all coordinates are real pixels.
 if sys.platform == "win32":
@@ -25,7 +24,7 @@ from .theme import font, tint_titlebar
 from .core import Eris
 from .overlay import Overlay
 
-OVERLAY_CMDS = {"box", "move_box", "type_hint", "caption", "clear_box", "status", "monitor"}
+OVERLAY_CMDS = {"box", "move_box", "type_hint", "clear_box", "status", "monitor"}
 SUGGESTIONS = ["How do I add a Rigidbody in Unity?", "Take me to Wikipedia",
                "Pick yourself a profile picture"]
 
@@ -99,6 +98,7 @@ class App(ctk.CTk):
         self.bubbles = []
         self.last_eris = None
         self._rects = []
+        self._ticks = 0
 
         self.overlay = Overlay(self)
         self._build()
@@ -146,38 +146,48 @@ class App(ctk.CTk):
         self._rects = rects
 
     def _pump(self):
-        self._ticks = getattr(self, "_ticks", 0) + 1
+        """Carry out everything Eris asked the window to do. One bad message must never
+        stop the loop (that would freeze the window), so each is handled on its own."""
+        self._ticks += 1
         if self._ticks % 15 == 0:   # about twice a second is plenty
             self._cache_rects()
-        try:
-            while True:
+        for _ in range(200):
+            try:
                 name, args = self.q.get_nowait()
-                if name in OVERLAY_CMDS:
-                    getattr(self.overlay, name)(*args)
-                elif name == "log":
-                    self._append(*args)
-                elif name == "state":
-                    self._set_state(*args)
-                elif name == "update_available":
-                    self.update_version = args[0]
-                    self.update_btn.configure(text=f"Update to v{args[0]}")
-                    self.update_btn.pack(side="right", padx=(0, 8))
-                elif name == "restart":
-                    updater.restart()
-                    self._quit()
-                elif name == "update_failed":
-                    self.update_btn.configure(state="normal", text="Retry update")
-                elif name == "avatar":
-                    self.avatar.load()
-                elif name == "clear_chat":
-                    self._clear_chat()
-                elif name == "call":
-                    self._set_call(args[0])
-                elif name == "active":
-                    self.active_switch.select() if args[0] else self.active_switch.deselect()
-        except queue.Empty:
-            pass
+            except queue.Empty:
+                break
+            try:
+                self._handle(name, args)
+            except Exception as e:
+                self._write_log("error", f"window couldn't do {name}{args}: {e}")
         self.after(30, self._pump)
+
+    def _handle(self, name, args):
+        if name in OVERLAY_CMDS:
+            getattr(self.overlay, name)(*args)
+        elif name == "log":
+            self._append(*args)
+        elif name == "state":
+            self._set_state(*args)
+        elif name == "update_available":
+            self.update_version = args[0]
+            self.update_btn.configure(text=f"Update to v{args[0]}")
+            self.update_btn.pack(side="right", padx=(0, 8))
+        elif name == "restart":
+            updater.restart()
+            self._quit()
+        elif name == "update_failed":
+            self.update_btn.configure(state="normal", text="Retry update")
+        elif name == "avatar":
+            self.avatar.load()
+        elif name == "clear_chat":
+            self._clear_chat()
+        elif name == "call":
+            self._set_call(args[0])
+        elif name == "active":
+            self.active_switch.select() if args[0] else self.active_switch.deselect()
+        elif name == "run":
+            args[0]()                     # a background job's UI update (e.g. Settings)
 
     # ---------- layout ----------
     def _build(self):
@@ -373,7 +383,7 @@ class App(ctk.CTk):
                             font=font(14), wraplength=self._wrap(), justify="left",
                             padx=14, pady=9)
 
-    def _append(self, who, text):
+    def _write_log(self, who, text):
         try:
             if self.log_file.exists() and self.log_file.stat().st_size > 2_000_000:
                 os.replace(self.log_file, self.log_file.with_suffix(".old.log"))   # cap the log
@@ -381,6 +391,9 @@ class App(ctk.CTk):
                 f.write(f"{time.strftime('%H:%M:%S')} [{who}] {text}\n")
         except OSError:
             pass
+
+    def _append(self, who, text):
+        self._write_log(who, text)
         if who == "debug":
             return
         if who == "info":   # system message: status line, not the chat

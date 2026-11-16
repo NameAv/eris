@@ -67,20 +67,20 @@ def is_sensitive(is_password, *labels):
     return any(w in text for w in SENSITIVE_WORDS)
 
 
-_shared = None
+_helpers = {}
 _lock = threading.Lock()
 
 
-def get():
-    """The one shared UI Automation helper (None if not on Windows)."""
-    global _shared
+def get(role="main"):
+    """A UI Automation helper (None if not on Windows). Privacy checks use their own
+    ("privacy"), so a slow scan of a huge web page can never hold them up."""
     import sys
     if sys.platform != "win32":
         return None
     with _lock:
-        if _shared is None:
-            _shared = UIA()
-        return _shared
+        if role not in _helpers:
+            _helpers[role] = UIA()
+        return _helpers[role]
 
 
 class UIA:
@@ -99,8 +99,9 @@ class UIA:
         return out.get("result")
 
     def focus_is_sensitive(self, timeout=0.3):
-        """True if you're typing into a password / email / card field right now."""
-        return bool(self._ask("focus", None, timeout))
+        """True if you're typing into a password / email / card field right now,
+        None if Windows didn't answer in time."""
+        return self._ask("focus", None, timeout)
 
     def sensitive_rects(self, timeout=0.8):
         """Screen rects of password/email/card fields in the window in front.
@@ -221,7 +222,7 @@ class UIA:
     def _candidates(uia, walker, U, t):
         """Elements under a few points of the box, plus their parents."""
         x1, y1, x2, y2 = t
-        w, h = x2 - x1, y2 - y1
+        w = x2 - x1
         points = [((x1 + x2) // 2, (y1 + y2) // 2), (x1 + w // 4, (y1 + y2) // 2),
                   (x2 - w // 4, (y1 + y2) // 2)]
         seen, out = set(), []

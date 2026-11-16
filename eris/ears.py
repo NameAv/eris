@@ -4,7 +4,6 @@ Audio never leaves your PC and is never saved."""
 import collections
 import queue
 import threading
-import time
 
 import numpy as np
 import sounddevice as sd

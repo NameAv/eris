@@ -5,7 +5,6 @@ Your settings/API key live in %APPDATA%\\Eris, so updates never touch them.
 import hashlib
 import io
 import os
-import shutil
 import subprocess
 import sys
 import urllib.request
@@ -15,7 +14,6 @@ from pathlib import Path
 from . import config
 
 ROOT = Path(__file__).resolve().parent.parent      # the folder with install.bat
-SKIP = {".venv", ".git", "__pycache__"}
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
 

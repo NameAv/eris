@@ -4,7 +4,7 @@ something else...).
 
 It only compares tiny greyscale thumbnails on your PC, so watching itself is
 free. The AI is only asked when the screen actually changed and has settled.
-Eris's own windows, the red box and its caption are ignored.
+Eris's own windows, the red box and its type hint are ignored.
 """
 import threading
 import time
@@ -38,7 +38,7 @@ class Watcher:
 
     def rebase(self, delay=0.5, kept=False):
         """Start comparing against the screen as it looks `delay` seconds from now.
-        (The box, its caption and Eris's own windows are masked out, so a short
+        (The box, its type hint and Eris's own windows are masked out, so a short
         delay is enough.) kept=True: the last look found nothing new, so be more
         patient with a screen that never stops changing (a video, Unity's Play mode)."""
         with self.lock:
@@ -56,7 +56,7 @@ class Watcher:
             self.nudged_at = time.time()
 
     def _masks(self, mon):
-        """Screen areas to ignore: Eris's windows, the box + caption, the status pill."""
+        """Screen areas to ignore: Eris's windows, the box + type hint, the status pill."""
         left, top, w, h = mon
         rects = list(self.eris.ui.window_rects())
         if self.eris.box:

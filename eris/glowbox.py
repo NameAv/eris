@@ -4,9 +4,7 @@ pop-in and a gentle pulse. Drawn as an image and shown in a click-through
 goes wrong and the overlay falls back to the plain bars.
 """
 import math
-import sys
 import time
-from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont

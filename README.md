@@ -103,8 +103,8 @@ updates come from here, so protect it.
 
 ## Test lab
 
-**Settings, then App, then Test Eris** runs 15 tricky tests on made-up screens with her current
-brain (17 of them). The tests cover a Google results page with a sponsored ad, a site's own search box vs the
+**Settings, then App, then Test Eris** runs 17 tricky tests on made-up screens with her current
+brain. The tests cover a Google results page with a sponsored ad, a site's own search box vs the
 address bar, a login page, a fake "virus" scam pop-up, a page with hidden instructions aimed at AI,
 a Unity editor (select the object, Add Component, Rigidbody vs Rigidbody 2D, the tiny play
 button), a Blender-style editor and a game settings menu. Each reply is graded: did the box land on the right thing, did she avoid the ad, refuse

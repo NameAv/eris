@@ -608,6 +608,8 @@ class SettingsWindow(ctk.CTkToplevel):
                              lambda v=value: (self.set(THEME=v), self.show("eris"),
                                               self.toast("✓ Saved: restart Eris to see it")), image=img
                              ).grid(row=0, column=i, sticky="nsew", padx=4)
+        self.switch(c, "Glitch effects", "Neon look: the banner glitches now and then, and when she "
+                    "starts listening or guiding.", "GLITCH")
         if config.THEME != T.NAME:
             self.button(c, "Restart Eris now", lambda: self.app.cmd("restart"), primary=True
                         ).pack(anchor="w", pady=(12, 0))

@@ -61,27 +61,41 @@ def r(n):
     return n if RADIUS is None else min(n, RADIUS)
 
 
-def streaks(w, h, seed=7):
-    """Sparse streaks of red light on black (the neon theme's banner)."""
+def streaks(w, h, seed=7, density=1.0):
+    """Sparse streaks of red light on black, with soft red glows behind (the neon look's
+    banner). Wraps around seamlessly left-right, so it can scroll forever."""
     from PIL import Image, ImageChops, ImageDraw, ImageFilter
     rnd = random.Random(seed)
-    glow = Image.new("RGB", (w, h), (0, 0, 0))
-    lines = Image.new("RGB", (w, h), (0, 0, 0))
-    gd, d = ImageDraw.Draw(glow), ImageDraw.Draw(lines)
-    for _ in range(max(8, int(w * h / 650))):
+    pad = 24                                            # drawn wider, so the blur wraps too
+    W = w + 2 * pad
+    blobs = Image.new("RGB", (W, h), (0, 0, 0))
+    glow = Image.new("RGB", (W, h), (0, 0, 0))
+    lines = Image.new("RGB", (W, h), (0, 0, 0))
+    bd, gd, d = ImageDraw.Draw(blobs), ImageDraw.Draw(glow), ImageDraw.Draw(lines)
+
+    def twice(draw, x1, y1, x2, y2, **kw):              # once here, once a whole width along
+        for shift in (0, -w, w):
+            draw((x1 + shift + pad, y1, x2 + shift + pad, y2), **kw)
+    for _ in range(max(2, int(w * h / 4000 * density))):          # soft red glows
+        x, y = rnd.uniform(0, w), rnd.uniform(0, h)
+        rw, rh = rnd.uniform(30, 120), rnd.uniform(6, 18)
+        twice(bd.ellipse, x - rw, y - rh, x + rw, y + rh, fill=(rnd.randint(40, 90), 2, 6))
+    for _ in range(max(8, int(w * h / 650 * density))):
         y = rnd.uniform(0, h)
-        x = rnd.uniform(-w * 0.2, w)
+        x = rnd.uniform(0, w)
         length = rnd.uniform(15, w * 0.45)
         heat = rnd.random() ** 1.6                      # most streaks are dim
         col = (int(60 + 170 * heat), int(4 + 30 * heat ** 3), int(8 + 26 * heat ** 3))
-        gd.line((x, y, x + length, y), fill=col, width=rnd.choice((2, 3, 4)))
-        d.line((x + length * 0.1, y, x + length * 0.9, y), fill=col, width=1)
+        twice(gd.line, x, y, x + length, y, fill=col, width=rnd.choice((2, 3, 4)))
+        twice(d.line, x + length * 0.1, y, x + length * 0.9, y, fill=col, width=1)
         if heat > 0.8:                                   # a hot white-pink core
-            d.line((x + length * 0.4, y, x + length * 0.7, y), fill=(255, 190, 180), width=1)
-    for _ in range(int(w * h / 1500)):                   # a few sparks
+            twice(d.line, x + length * 0.4, y, x + length * 0.7, y, fill=(255, 190, 180), width=1)
+    for _ in range(int(w * h / 1500 * density)):        # a few sparks
         x, y = rnd.uniform(0, w), rnd.uniform(0, h)
-        d.point((x, y), fill=(255, 80, 70))
-    return ImageChops.add(glow.filter(ImageFilter.GaussianBlur(3)), lines)
+        twice(d.ellipse, x, y, x + 1, y + 1, fill=(255, 80, 70))
+    out = ImageChops.add(ImageChops.add(blobs.filter(ImageFilter.GaussianBlur(10)),
+                                        glow.filter(ImageFilter.GaussianBlur(3))), lines)
+    return out.crop((pad, 0, pad + w, h))
 
 
 _fonts = {}

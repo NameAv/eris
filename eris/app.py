@@ -201,9 +201,10 @@ class App(ctk.CTk):
     # ---------- layout ----------
     def _build(self):
         # header: avatar, name, status chip
-        if T.NAME == "neon":    # streaks of red light across the top
-            self.banner = ctk.CTkImage(T.streaks(1040, 56), size=(520, 28))
-            ctk.CTkLabel(self, text="", image=self.banner, height=28).pack(fill="x")
+        self.banner = None
+        if T.NAME == "neon":    # streaks of red light drifting across the top
+            from .glitch import Banner
+            self.banner = Banner(self).pack(fill="x")
         top = ctk.CTkFrame(self, fg_color="transparent")
         top.pack(fill="x", padx=18, pady=(16, 8))
         self.avatar = Avatar(top)
@@ -516,6 +517,9 @@ class App(ctk.CTk):
         self.chip_text.configure(text=label)
         self.chip_dot.configure(fg_color=colour)
         self.avatar.pulse(state in ("listening", "thinking"))
+        if self.banner and state in ("listening", "guiding") and state != getattr(self, "_last_state", None):
+            self.banner.burst()          # a glitch as she starts listening / talking
+        self._last_state = state
         on_call = getattr(self, "on_call", False)
         if state == "listening":
             self.mic.configure(text="Listening..." if on_call else "Listening... let go when you're done",

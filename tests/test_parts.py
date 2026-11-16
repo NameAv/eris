@@ -76,6 +76,28 @@ def test_looks():
           np.asarray(hud).shape == np.asarray(round_).shape and not np.array_equal(np.asarray(hud), np.asarray(round_)))
 
 
+def test_glitch_banner():
+    from eris import config, glitch
+    s = glitch.Streaks(480, 44)
+    s.next_glitch = 1e12
+    a, b = s.frame(1000.0), s.frame(1000.5)
+    check("banner frames are the right size", a.shape == (44, 480, 3) and a.dtype == np.uint8)
+    check("the streaks drift", not np.array_equal(a, b))
+    calm = s.frame(2000.0)
+    s.burst(2000.0, 0.3)
+    check("a glitch changes the picture", not np.array_equal(calm, s.frame(2000.0)))
+    def plain(t):
+        return np.maximum(np.roll(s.far, -int(t * glitch.FAR_SPEED) % 480, axis=1),
+                          np.roll(s.near, -int(t * glitch.NEAR_SPEED) % 480, axis=1)).astype(np.uint8)
+    check("...and passes", np.array_equal(s.frame(2001.0), plain(2001.0)))
+    config.GLITCH = False
+    s.burst(3000.0, 0.3)
+    check("Glitch effects off: just the drifting streaks", np.array_equal(s.frame(3000.0), plain(3000.0)))
+    config.GLITCH = True
+    wrap = np.asarray(__import__("eris.theme", fromlist=["streaks"]).streaks(300, 30), dtype=np.int16)
+    check("the streaks wrap around seamlessly", np.abs(wrap[:, 0] - wrap[:, -1]).mean() < 25)
+
+
 def test_elements_list():
     from eris import elements
     els = [{"type": 50005, "name": "Wikipedia", "rect": (200, 600, 380, 630)},

@@ -766,6 +766,7 @@ class Step:
         self.what = ""             # what she pointed at
         self.typed = self.key = ""
         self.dragged = False
+        self.element_n = None      # the list number she picked, while it's still being checked
         self.over = False          # the brain has finished this reply
         self.final = None          # where the box ends up after refining
 
@@ -820,6 +821,7 @@ class Step:
             return
         from .uia import TYPE_NAMES
         self._show(exact, TYPE_NAMES.get(shot.elements[n - 1].get("type")))
+        self.element_n = n
         self.refining = True   # an exact rectangle: no precision pass needed
         self.snapped.set()
         e.ui.log("debug", f"box: element {n} {shot.elements[n - 1]}")
@@ -830,6 +832,7 @@ class Step:
 
     def on_what(self, what):
         self.what = what
+        self._check_element(what)
         if self._my_box():
             self.refine(what)
 
@@ -885,6 +888,8 @@ class Step:
         e.ui.cmd("status", "")
         e.ui.cmd("state", "guiding")
         e.ui.log("eris", words)            # the chat shows every line; only what matters is read out
+        if is_action(words):
+            self._check_element(words)
         if is_action(words) and not self.instructed:
             self.instructed = True
             e.voice.say(words)             # the instruction itself
@@ -925,6 +930,29 @@ class Step:
         e.ui.cmd("clear_box")
         e.ui.cmd("state", "ready")
         e.steps = 0
+
+    def _check_element(self, text):
+        """She picked a number from the list but names something else ("Click Show more
+        images" with the number of a browser tab): point at the element with that name."""
+        n, els = self.element_n, self.shot.elements
+        if not n or n > len(els):
+            return
+        low = text.lower()
+        picked = (els[n - 1].get("name") or "").strip().lower()
+        if picked and picked in low:
+            self.element_n = None            # it is the one she means
+            return
+        named = [(len(name), i) for i, el in enumerate(els, 1)
+                 for name in [(el.get("name") or "").strip().lower()] if len(name) >= 6 and name in low]
+        if not named:
+            return
+        better = max(named)[1]
+        box, _ = snap.element(self.shot, better)
+        if box and better != n and self._my_box():
+            from .uia import TYPE_NAMES
+            self.e.ui.log("debug", f"box: she said {text!r} but picked {n} ({picked!r}); using {better}")
+            self._show(box, TYPE_NAMES.get(els[better - 1].get("type")))
+        self.element_n = None
 
     def summary(self):
         """This step in a few words, for a recipe: "Click Add Component (the blue Add

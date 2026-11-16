@@ -28,6 +28,8 @@ FAST = 0.15                # seconds between looks at the box's own spot
 REACH_X, REACH_Y = 250, 450   # how far the quick look searches for a button that moved
 MIN_GAP = 4.0              # never ask the AI more often than this
 MAX_LOOKS_PER_STEP = 6     # then go quiet until you click the box / press F9
+SCROLL_LIKE = 0.03         # after the box's button moved: the rest of the screen moved with it
+                           # (a scroll) if, shifted back, no more than this share differs
 
 
 def _cursor_in(box):
@@ -70,6 +72,7 @@ class Watcher:
             self.changed_at = None
             self.still_since = None
             self.nudged_at = None
+            self.shift = [0, 0]           # how far the box's button has moved since the base
 
     def nudge(self):
         """You pressed Enter: have a look shortly even if little changed."""
@@ -129,10 +132,13 @@ class Watcher:
 
     def _follow(self, t, img, ox, oy):
         """Look for the box's button in img. Returns True if it's gone."""
+        old = t.box
         result, box = t.find(tracker.grey(img) if isinstance(img, Image.Image) else img, ox, oy)
         if result == tracker.MOVED:
             self.eris.follow(box)
-            self.rebase(delay=0.25)          # scrolling isn't "doing the step"
+            with self.lock:                  # was it a scroll, or a new page? _step decides
+                self.shift[0] += box[0] - old[0]
+                self.shift[1] += box[1] - old[1]
             return False
         return result == tracker.GONE and not _cursor_in(box)   # a hover effect isn't "gone"
 
@@ -149,6 +155,20 @@ class Watcher:
         if rx2 - rx1 < 16 or ry2 - ry1 < 16:
             return False
         return self._follow(t, self._grab(sct, rx1, ry1, rx2 - rx1, ry2 - ry1), rx1, ry1)
+
+    def _scrolled(self, frame):
+        """Does this frame look like the base moved by the box's shift (a scroll or a moved
+        window), rather than a different page that happens to have the same button?"""
+        mon = self.eris.mon
+        if not mon:
+            return False
+        dx, dy = round(self.shift[0] * TW / mon[2]), round(self.shift[1] * TH / mon[3])
+        h, w = frame.shape
+        y1, y2 = max(0, -dy), min(h, h - dy)
+        x1, x2 = max(0, -dx), min(w, w - dx)
+        if y2 - y1 < h // 3 or x2 - x1 < w // 3:
+            return False
+        return changed(frame[y1 + dy:y2 + dy, x1 + dx:x2 + dx], self.base[y1:y2, x1:x2]) <= SCROLL_LIKE
 
     def _ready(self):
         e = self.eris
@@ -180,8 +200,6 @@ class Watcher:
                 img = self._grab(sct, *mon)
                 t = self._tracker()
                 gone = bool(t) and self._follow(t, img, mon[0], mon[1])
-                if self.base_after > time.time():     # it just followed a scroll
-                    continue
                 if self._step(self._thumb(img, mon), gone=gone):
                     self.eris.auto_look()
             except Exception as ex:   # never let watching crash Eris
@@ -197,7 +215,14 @@ class Watcher:
         with self.lock:
             if self.base is None:
                 self.base = self.prev = frame
+                self.shift = [0, 0]
                 return False
+            if self.shift != [0, 0]:
+                if self._scrolled(frame):     # everything moved together: you scrolled
+                    self.base = self.prev = frame
+                    self.shift, self.changed_at, self.still_since = [0, 0], None, None
+                    return False
+                self.shift = [0, 0]           # the page itself changed: that counts
             different = gone or changed(frame, self.base) > CHANGED
             still = changed(frame, self.prev) <= STILL
             self.prev = frame

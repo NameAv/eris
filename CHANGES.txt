@@ -1,3 +1,4 @@
+v1.23.4: Fix: after you searched, Eris could miss the new page for a long time (the box followed the search box to its new spot and she took it for a scroll). Fix: if she names one thing but picks the number of another, the box goes on the thing she names.
 v1.23.3: Eris reads out the instruction itself ("Click the Wikipedia result"), not the commentary before it; the chat still shows everything.
 v1.23.2: Eris keeps watching while she talks, so when you've already moved on she wraps up and gives the next step instead of finishing an old instruction. Only her first line (and a short second one) is read out; the chat still shows everything.
 v1.23.1: Faster after you click: Eris waits for the page to finish changing (instead of looking at the old page and repeating herself), looks at a constantly changing screen after 3 seconds instead of 8, and starts speaking long sentences sooner by voicing them in pieces.

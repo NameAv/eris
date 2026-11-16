@@ -482,6 +482,25 @@ def test_which_screen():
     check("a tiny popup: the whole screen", screen.window_area((1000, 600, 1300, 800), main) is None)
 
 
+def test_scroll_or_new_page():
+    import eris.watcher as W
+    rng = np.random.default_rng(1)
+    page = rng.integers(0, 255, size=(W.TH * 2, W.TW)).astype(np.int16)
+    w = W.Watcher.__new__(W.Watcher)
+    w.eris = types.SimpleNamespace(waiting="next", mon=(0, 0, 1440, 810))
+    w.lock, w.last_fire, w.keep_streak = threading.Lock(), 0.0, 0
+    w.rebase(delay=0)
+    w._step(page[:W.TH].copy(), 100.0)                 # the base
+    w.shift = [0, -360]                                # the button moved up 360px (a scroll of 80 rows)
+    scrolled = page[80:80 + W.TH].copy()
+    check("the button moved because you scrolled: not a change", w._step(scrolled, 100.5) is False
+          and w.changed_at is None and w.shift == [0, 0])
+    w.shift = [0, -200]                                # moved, but the whole page is new
+    new_page = rng.integers(0, 255, size=(W.TH, W.TW)).astype(np.int16)
+    w._step(new_page, 101.0)
+    check("the button moved because a new page loaded: that counts", w.changed_at is not None)
+
+
 def test_hearing():
     from eris import ears as E
     rng = np.random.default_rng(0)

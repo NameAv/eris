@@ -235,6 +235,22 @@ def test_checking_a_step():
           and "a lot of the screen changed" in e.brain.notes[-1])
 
 
+def test_picked_number_must_match_what_she_says():
+    shot = fake_shot(elements=[{"type": 50019, "name": "YouTube - Memory usage - 499 MB", "rect": (100, 0, 300, 40)},
+                               {"type": 50000, "name": "Show more images", "rect": (800, 900, 1100, 950)}])
+    e, ui, _ = make_eris(shot)
+    e.brain.script = ["ELEMENT 1\nSAY The search worked, the Space Shuttle isn't blue.\n"
+                      "SAY Click Show more images to see more pictures.\nWAIT click"]
+    e.ask("find a blue rocket")
+    wait_for(lambda: e.waiting == "click")
+    check("she names one thing but picks another's number: the box goes on the one she names",
+          e.box is not None and e.box[1] > 800, e.box)
+    e.brain.script = ["ELEMENT 1\nSAY Click the YouTube tab.\nWAIT click"]
+    e.ask("go to youtube")
+    wait_for(lambda: e.waiting == "click" and not e.busy)
+    check("...and a number that matches is left alone", e.box is not None and e.box[1] < 100, e.box)
+
+
 def test_wrong_box():
     from PIL import Image
     from eris import settings

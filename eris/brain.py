@@ -199,8 +199,11 @@ character or place names, level layouts, art, music or other content, not even "
 once". If they ask, say kindly that it has to be theirs, and teach them the first step.
 - Facts: follow the Unity handbook below and the handbook pages sent with a task; they're \
 checked. The screen wins if their version looks different. Never guess a menu path, API \
-or setting: if you're not sure, say so and show them where to look it up (the Unity Manual \
-or Scripting Reference, Help > Unity Manual).
+or setting. If you're not sure and the handbook doesn't cover it: when you have the \
+web_search tool, search Unity's official docs FIRST, before writing any line (put their \
+Unity version in the query, e.g. "Unity 6.3 NavMeshSurface bake"); otherwise say you're \
+not sure and show them where to look it up (Help > Unity Manual). Don't search for things \
+the handbook or the screen already answer: each search makes them wait.
 - Editor steps: box things and guide as usual. Pointing at where things are is teaching.
 - Code (in Visual Studio, VS Code or Rider): say in plain words what the next line or two \
 must do and name the Unity API that does it (e.g. CharacterController.Move, \
@@ -302,6 +305,10 @@ def gpu_fit(model=None):
 
 # History is trimmed in chunks (not one turn at a time) so the cached prefix
 # stays the same for many steps in a row.
+UNITY_DOCS = ["docs.unity3d.com", "docs.unity.com", "learn.unity.com"]   # official Unity docs only
+DOC_SEARCHES = 2           # at most this many docs searches per reply (each adds a few seconds)
+LONG_CACHE = {"type": "ephemeral", "ttl": "1h"}   # the fixed prompt: a Unity session has long gaps
+
 HISTORY_MAX = 28
 HISTORY_KEEP = 12
 CACHE = {"type": "ephemeral"}
@@ -314,6 +321,7 @@ class Brain:
         self._key = None
         self.history = []   # text only; old screenshots aren't re-sent (keeps it fast)
         self.last_call = 0.0
+        self.docs_off = False   # the docs search was refused once: carry on without it
 
     def _get_client(self):
         key = settings.api_key()
@@ -329,14 +337,21 @@ class Brain:
         self.history = []
 
     def _system(self):
-        system = [{"type": "text", "text": SYSTEM, "cache_control": CACHE}]
+        system = [{"type": "text", "text": SYSTEM, "cache_control": LONG_CACHE}]
         if config.MODE == "unity":
-            system.append({"type": "text", "text": TEACH + "\n\n" + unity_book.CORE, "cache_control": CACHE})
+            system.append({"type": "text", "text": TEACH + "\n\n" + unity_book.CORE, "cache_control": LONG_CACHE})
             system.append({"type": "text", "text": f"{course.summary()} {unity_book.about_version()}"})
         mem = memory_text()
         if mem:   # after the cached block, so new memories don't break that cache
             system.append({"type": "text", "text": mem})
         return system
+
+    def _tools(self):
+        """Eris Unity on the Opus brain can check Unity's official docs when she isn't sure."""
+        if config.MODE != "unity" or config.BRAIN != "claude" or self.docs_off:
+            return {}
+        return {"tools": [{"type": "web_search_20260209", "name": "web_search",
+                           "max_uses": DOC_SEARCHES, "allowed_domains": UNITY_DOCS}]}
 
     def _cached_history(self):
         history = [dict(m) for m in self.history]
@@ -363,7 +378,7 @@ class Brain:
             if client:
                 messages = self._cached_history() + [{"role": "user", "content": "(warming up)"}]
                 claude(client, "create", max_tokens=0, system=self._system(), messages=messages,
-                       output_config={"effort": config.EFFORT}, **no_thinking())
+                       output_config={"effort": config.EFFORT}, **no_thinking(), **self._tools())
         except Exception as e:
             self.log("debug", f"prewarm skipped: {e}")
 
@@ -449,7 +464,7 @@ class Brain:
             fast = {"speed": "fast"} if config.FAST_MODE and config.BRAIN == "claude" else {}
             with claude(client, "stream", max_tokens=config.MAX_TOKENS, system=self._system(),
                         messages=messages, output_config={"effort": config.EFFORT},
-                        **no_thinking(), **fast) as stream:
+                        **no_thinking(), **self._tools(), **fast) as stream:
                 for chunk in stream.text_stream:
                     if not alive():
                         return None  # user moved on; drop this reply
@@ -457,13 +472,25 @@ class Brain:
                     feed(chunk)
                 final = stream.get_final_message()
             u = final.usage
+            searches = getattr(getattr(u, "server_tool_use", None), "web_search_requests", 0) or 0
             self.log("debug", f"tokens: in={u.input_tokens} cache_read={u.cache_read_input_tokens} "
-                              f"cache_write={u.cache_creation_input_tokens} out={u.output_tokens}")
+                              f"cache_write={u.cache_creation_input_tokens} out={u.output_tokens}"
+                              + (f" docs searches={searches}" if searches else ""))
+            if final.stop_reason == "pause_turn":       # stopped mid-search: what she said stands
+                self.log("debug", "the docs search paused the reply")
             if final.stop_reason == "refusal":
                 self._fail(on_event, "Sorry, I can't help with that one.")
                 return None
         except anthropic.AuthenticationError:
             self._fail(on_event, "My API key isn't working. Check it in Settings.")
+            return None
+        except anthropic.BadRequestError as e:
+            if self._tools() and not reply:     # the docs search was refused: answer without it
+                self.log("error", f"docs search turned off: {e}")
+                self.docs_off = True
+                return self._claude(shot, user_text, feed, alive, on_event)
+            self.log("error", f"API error: {e}")
+            self._fail(on_event, "I couldn't reach my brain just now. Try again.")
             return None
         except (anthropic.APIConnectionError, anthropic.RateLimitError, anthropic.APIStatusError) as e:
             self.log("error", f"API error: {e}")

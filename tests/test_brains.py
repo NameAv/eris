@@ -52,7 +52,8 @@ def test_claude_requests():
     shot = fake_shot()
     for i in range(3):
         b.turn(shot, f"q{i}", lambda e: None, lambda: True)
-    check("Opus: system prompt is cached", CAP["system"][0]["cache_control"] == {"type": "ephemeral"})
+    check("Opus: system prompt is cached for an hour", CAP["system"][0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"})
+    check("Guide mode: no docs search", "tools" not in CAP)
     check("Opus: end of history is cached", CAP["messages"][-2]["content"][0]["cache_control"])
     check("Opus: refusal fallback on, no thinking override",
           CAP["fallbacks"] == "default" and "thinking" not in CAP and CAP["model"] == config.MODEL)
@@ -68,6 +69,44 @@ def test_claude_requests():
     b.turn(shot, "hi", lambda e: None, lambda: True)
     check("Haiku on Medium: thinks", "thinking" not in CAP)
     config.BRAIN, config.EFFORT = "claude", "low"
+
+
+def test_unity_docs_search():
+    config.BRAIN, config.MODE = "claude", "unity"
+    try:
+        b = claude_brain()
+        b.turn(fake_shot(), "hi", lambda e: None, lambda: True)
+        tool = CAP["tools"][0]
+        check("Eris Unity on Opus can search only Unity's official docs",
+              tool["type"] == "web_search_20260209" and tool["allowed_domains"] == brain.UNITY_DOCS
+              and tool["max_uses"] == brain.DOC_SEARCHES)
+        check("...and the handbook is cached with the rules",
+              "linearVelocity" in CAP["system"][1]["text"] and CAP["system"][1]["cache_control"]["ttl"] == "1h")
+        b.history = [{"role": "user", "content": "x"}, {"role": "assistant", "content": "DONE"}]
+        b.last_call = 0
+        b.prewarm()
+        check("the warm-up sends the same tools (so its cache matches)", CAP.get("tools") == [tool])
+        import anthropic
+        tries = []
+
+        def picky(**kw):
+            tries.append(kw)
+            if "tools" in kw:
+                raise anthropic.BadRequestError("no", response=types.SimpleNamespace(
+                    request=None, status_code=400, headers={}), body=None)
+            return FakeStream(**kw)
+        b._get_client = lambda: types.SimpleNamespace(beta=types.SimpleNamespace(
+            messages=types.SimpleNamespace(stream=picky)))
+        said = []
+        b.turn(fake_shot(), "hi", lambda e: said.append(e.kind), lambda: True)
+        check("if the API refuses the docs search, she answers without it",
+              len(tries) == 2 and "tools" not in tries[1] and "say" in said and "fail" not in said)
+        b._get_client = lambda: fake_client()
+        config.BRAIN = "claude-cheap"
+        b.turn(fake_shot(), "hi", lambda e: None, lambda: True)
+        check("no docs search on the Cheap brain", "tools" not in CAP)
+    finally:
+        config.BRAIN, config.MODE = "claude", "guide"
 
 
 def test_prewarm():

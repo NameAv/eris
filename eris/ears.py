@@ -19,7 +19,7 @@ class Ears:
     def __init__(self):
         from faster_whisper import WhisperModel
         self.model = WhisperModel(config.WHISPER_MODEL, device="cpu", compute_type="int8")
-        self.frames = []
+        self.pieces = None
         self.stream = None
         self.lock = threading.Lock()
         self.model_lock = threading.Lock()
@@ -31,9 +31,12 @@ class Ears:
         with self.lock:
             if self.stream:
                 return
-            self.frames = []
+            self.pieces = Pieces(self)
+
+            def heard(d, *_):
+                self.pieces.feed(d[:, 0].copy())
             self.stream = sd.InputStream(samplerate=RATE, channels=1, dtype="float32",
-                                         callback=lambda d, *_: self.frames.append(d.copy()))
+                                         blocksize=BLOCK, callback=heard)
             self.stream.start()
 
     def _stop(self):
@@ -41,20 +44,21 @@ class Ears:
             if not self.stream:
                 return None
             self.stream.stop(); self.stream.close(); self.stream = None
-            return self.frames
+            return self.pieces
 
     def abort(self):
         """Stop recording and throw the audio away (e.g. the button was only clicked)."""
-        self._stop()
+        pieces = self._stop()
+        if pieces:
+            pieces.drop()
 
     def stop_and_transcribe(self) -> str:
-        frames = self._stop()
-        if not frames:
-            return ""
-        return self.transcribe(np.concatenate(frames).flatten())
+        pieces = self._stop()
+        return pieces.finish() if pieces else ""
 
     # ---------- speech to text ----------
-    def transcribe(self, audio) -> str:
+    def transcribe(self, audio, before="") -> str:
+        """before: what was said just before this piece (helps Whisper with the next words)."""
         if len(audio) < RATE * 0.3:  # under 0.3s = accidental tap
             return ""
         if np.sqrt(np.mean(audio ** 2)) < 0.0015:  # basically silence: don't let Whisper invent words
@@ -64,12 +68,78 @@ class Ears:
             audio = audio * (0.5 / peak)
         with self.model_lock:
             segments, _ = self.model.transcribe(audio, beam_size=1, language="en",
-                                                initial_prompt=config.WHISPER_HINT,
+                                                initial_prompt=f"{config.WHISPER_HINT}. {before}".strip(),
                                                 condition_on_previous_text=False)
             # Drop bits Whisper is unsure were speech at all (it invents "Thank you." on noise).
             text = " ".join(s.text.strip() for s in segments
                             if not (s.no_speech_prob > 0.6 and s.avg_logprob < -0.8)).strip()
         return "" if text.lower().strip(" .!") in HALLUCINATIONS else text
+
+
+class Pieces:
+    """Turns what you say into text while you're still saying it: each time you pause,
+    the words since the last pause are transcribed in the background, so when you stop
+    only your last few words are left to do (instead of the whole thing)."""
+
+    PAUSE = 12               # ~0.36 s of quiet after some voice ends a piece
+    MIN_PIECE = 20           # ~0.6 s: shorter bits wait to join the next piece
+
+    def __init__(self, ears):
+        self.ears = ears
+        self.blocks = []
+        self.cut = 0             # where the piece being spoken now started
+        self.voiced = False
+        self.quiet = 0
+        self.floor = None
+        self.texts = []
+        self.work = queue.Queue()
+        self.total = 0
+        threading.Thread(target=self._worker, daemon=True).start()
+
+    def feed(self, block):
+        self.blocks.append(block)
+        self.total += len(block)
+        rms = float(np.sqrt(np.mean(block ** 2)))
+        if self.floor is None and len(self.blocks) >= 5:    # the room, before you speak
+            self.floor = float(np.median([np.sqrt(np.mean(b ** 2)) for b in self.blocks]))
+        loud = rms > max((self.floor or 0.002) * 3.0, 0.006)
+        self.voiced = self.voiced or loud
+        self.quiet = 0 if loud else self.quiet + 1
+        if self.voiced and self.quiet >= self.PAUSE and len(self.blocks) - self.cut >= self.MIN_PIECE:
+            self._send(len(self.blocks))
+
+    def _send(self, end):
+        piece, self.cut = self.blocks[self.cut:end], end
+        self.voiced = False
+        if piece:
+            self.work.put(np.concatenate(piece))
+
+    def _worker(self):
+        while True:
+            audio = self.work.get()
+            if audio is None:
+                return
+            if isinstance(audio, threading.Event):
+                audio.set()                  # everything before it is done
+                continue
+            text = self.ears.transcribe(audio, before=" ".join(self.texts)[-200:])
+            if text:
+                self.texts.append(text)
+
+    def finish(self):
+        """You stopped talking: the last words, then the whole thing as text."""
+        if self.total < RATE * 0.3:          # under 0.3 s: an accidental tap
+            self.drop()
+            return ""
+        self._send(len(self.blocks))
+        done = threading.Event()
+        self.work.put(done)
+        done.wait(30)
+        self.drop()
+        return " ".join(self.texts).strip()
+
+    def drop(self):
+        self.work.put(None)
 
 
 class Speech:
@@ -155,26 +225,32 @@ class Call:
     def _loop(self):
         det = Speech()
         tail = 0
+        pieces = None
         while self.running:
             try:
                 block = self.q.get(timeout=0.5)
             except queue.Empty:
                 continue
             if self.muted():
+                if det.talking and pieces:
+                    pieces.drop()
                 det.reset()
                 tail = 12        # then skip ~0.35 s more, so the echo of her voice dies down
                 continue
             if tail:
                 tail -= 1
                 continue
-            event, audio = det.feed(block)
+            event, _ = det.feed(block)
             if event == "start":
+                pieces = Pieces(self.ears)        # transcribe while you're still talking
+                for b in det.buf:
+                    pieces.feed(b)
                 self.on_start()
+            elif det.talking:
+                pieces.feed(block)
             elif event == "drop":
+                pieces.drop()
                 self.on_text("")          # back to normal: it was nothing
             elif event == "end":
-                threading.Thread(target=self._hear, args=(audio,), daemon=True).start()
-
-    def _hear(self, audio):
-        text = self.ears.transcribe(audio)
-        self.on_text(text)
+                pieces.feed(block)
+                threading.Thread(target=lambda p=pieces: self.on_text(p.finish()), daemon=True).start()

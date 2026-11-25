@@ -565,7 +565,8 @@ def test_hearing():
     r = ends(np.concatenate([noise(4, 0.012), voice(1.5, 0.12) + noise(1.5, 0.012), noise(1.5, 0.012)]))
     check("a noisy room (fan) still works", r[:1] == ["start"] and len(r) == 2)
     heard, busy = [], {"v": True}
-    call = E.Call(types.SimpleNamespace(transcribe=lambda a: "words"), on_start=lambda: None,
+    call = E.Call(types.SimpleNamespace(transcribe=lambda a, before="": "words" if np.abs(a).max() > 0.05 else ""),
+                  on_start=lambda: None,
                   on_text=heard.append, muted=lambda: busy["v"])
     call.running = True
     threading.Thread(target=call._loop, daemon=True).start()
@@ -580,6 +581,27 @@ def test_hearing():
     time.sleep(1.0)
     call.running = False
     check("on a call she never hears herself, only you", heard == ["words"], heard)
+    done_at = {}
+
+    class SlowEars:              # transcribing takes 0.3 s per second of audio
+        def transcribe(self, a, before=""):
+            time.sleep(0.3 * len(a) / E.RATE)
+            done_at.setdefault("n", 0)
+            done_at["n"] += 1
+            return f"part{done_at['n']}"
+    p = E.Pieces(SlowEars())
+    a = np.concatenate([noise(0.3), voice(2.0), noise(0.6), voice(2.0), noise(0.6), voice(0.8)])
+    for i in range(0, len(a) - E.BLOCK + 1, E.BLOCK):
+        p.feed(a[i:i + E.BLOCK])
+        time.sleep(E.BLOCK / E.RATE)       # as fast as you'd say it
+    t0 = time.time()
+    text = p.finish()
+    took = time.time() - t0
+    check("while you talk, each pause is transcribed in the background", text == "part1 part2 part3", text)
+    check("...so when you stop only the last words are left", took < 0.6, round(took, 2))
+    tap = E.Pieces(SlowEars())
+    tap.feed(noise(0.1))
+    check("an accidental tap is nothing", tap.finish() == "")
 
 
 def test_unity_project():

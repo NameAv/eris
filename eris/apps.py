@@ -79,6 +79,29 @@ def _follow_focus():
         time.sleep(0.3)
 
 
+def window(hwnd):
+    """The app window with this handle, if it's still a real app window (else None)."""
+    return _window(hwnd) if sys.platform == "win32" and hwnd else None
+
+
+def under_pointer():
+    """The app window under the mouse pointer (None if that's Eris, the desktop or the
+    taskbar): when you ask, the pointer is usually on the screen you're working on."""
+    if sys.platform != "win32":
+        return None
+    from ctypes import wintypes
+    u32 = ctypes.windll.user32
+    pt = wintypes.POINT()
+    if not u32.GetCursorPos(ctypes.byref(pt)):
+        return None
+    u32.WindowFromPoint.restype = wintypes.HWND
+    u32.WindowFromPoint.argtypes = [wintypes.POINT]
+    u32.GetAncestor.restype = wintypes.HWND
+    u32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
+    hwnd = u32.WindowFromPoint(pt)
+    return _window(u32.GetAncestor(hwnd, 2)) if hwnd else None      # 2: the top-level window
+
+
 def front_window():
     """The app you're working in (never Eris): the one in front, or if Eris is in front,
     the last app you were using; failing both, the window just behind Eris's."""

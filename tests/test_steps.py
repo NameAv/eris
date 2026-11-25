@@ -326,7 +326,7 @@ def test_automatic_looks():
                       [Event("fail", "I couldn't reach my brain just now.")],
                       "BOX 50 200 400 230\nSAY Click the result titled Wikipedia.\nWAIT click"]
     e.ask("take me to wikipedia")
-    wait_for(lambda: e.waiting == "next")
+    wait_for(lambda: e.waiting == "next" and not e.busy)
     check("TYPE goes inside the box", ("type_hint", "wikipedia") in ui.cmds)
     check("no caption bubble", not any(c[0] == "caption" for c in ui.cmds))
     e.auto_look()
@@ -525,6 +525,70 @@ def test_planning_ahead():
     check("a name is only used when exactly one thing has it",
           e._named(shot, "the Add Component button") == 1 and e._named(shot, "Rigidbody") is None)
     e.brain.plan = None
+
+
+def test_instant_from_your_words():
+    from eris.core import AHEAD_CHECK_PROMPT
+    shot = fake_shot(elements=[{"type": 50000, "name": "Images", "rect": (300, 100, 360, 120)},
+                               {"type": 50000, "name": "Videos", "rect": (380, 100, 440, 120)}])
+    e, ui, _ = make_eris(shot)
+    e.brain.script = ["KEEP"]
+    e.ask("click the Images tab")
+    check("\"click Images\": its box shows at once, then her look checks it",
+          wait_for(lambda: e.waiting == "click" and not e.busy) and e.box == (296, 96, 364, 124)
+          and e.voice.said[-1] == "Click Images." and AHEAD_CHECK_PROMPT[:30] in e.brain.asked[-1]
+          and e.brain.asked[-1].startswith("click the Images tab"))
+    e.brain.script = ["NOBOX\nSAY Sure.\nDONE"]
+    e.ask("how do I find images of cats")
+    wait_for(lambda: not e.busy)
+    check("anything else goes to her as usual", e.brain.asked[-1] == "how do I find images of cats")
+
+
+def test_future_sight_after_typing():
+    from eris.core import AHEAD_CHECK_PROMPT
+    shot = fake_shot(elements=[{"type": 50004, "name": "Search", "rect": (100, 50, 600, 80)}])
+    e, ui, _ = make_eris(shot)
+    e.brain.plan = {"what": "Wikipedia", "say": "Click Wikipedia.", "wait": "click"}
+    e.brain.script = ["ELEMENT 1\nTYPE wikipedia\nSAY Type wikipedia and press Enter.\nWAIT next", "KEEP", "KEEP"]
+    e.ask("take me to wikipedia")
+    check("typing steps get future sight too", wait_for(lambda: e.ahead is not None and not e.busy))
+    e.auto_look()
+    wait_for(lambda: not e.busy)
+    check("...not shown while what it names isn't there yet", e.ahead is not None and e.waiting == "next")
+    results = fake_shot(elements=shot.elements + [{"type": 50005, "name": "Wikipedia", "rect": (120, 200, 220, 220)}])
+    import eris.core as core
+    core.Eris._shoot = lambda self: results       # the results page loaded
+    e.auto_look()
+    check("once the results load, its box shows at once and her look checks it",
+          wait_for(lambda: e.box == (116, 196, 224, 224) and not e.busy) and e.waiting == "click"
+          and AHEAD_CHECK_PROMPT[:30] in e.brain.asked[-1])
+    e.brain.plan = None
+
+
+def test_which_window():
+    import eris.core as core
+    e, ui, _ = make_eris()
+    chrome_main = {"hwnd": 1, "name": "Google Chrome", "title": "Main", "rect": (0, 0, 1920, 1080)}
+    chrome_side = {"hwnd": 2, "name": "Google Chrome", "title": "Side", "rect": (1920, 0, 3840, 1080)}
+    eris_app = None
+    old = core.apps.front_window, core.apps.under_pointer, core.apps.window
+    known = {1: chrome_main, 2: chrome_side}
+    state = {"front": chrome_side, "pointer": chrome_main}
+    core.apps.front_window = lambda: state["front"]
+    core.apps.under_pointer = lambda: state["pointer"]
+    core.apps.window = lambda h: known.get(h)
+    try:
+        e._pick_window()
+        check("you ask: the window under your mouse wins", e._target_window() is chrome_main)
+        state["pointer"] = eris_app
+        check("...and her later looks stay on it", e._target_window() is chrome_main)
+        state["front"] = {"hwnd": 3, "name": "Unity", "title": "U", "rect": (0, 0, 10, 10)}
+        check("switch apps yourself and she follows you", e._target_window()["hwnd"] == 3)
+        state["front"] = chrome_side
+        e._pick_window()
+        check("mouse on Eris: the app you were last in", e._target_window() is chrome_side)
+    finally:
+        core.apps.front_window, core.apps.under_pointer, core.apps.window = old
 
 
 for name, fn in list(globals().items()):

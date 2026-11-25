@@ -171,10 +171,7 @@ def test_app_and_elements_in_prompt():
     shot.monitor = (0, 0, 2560, 1440)
     b.turn(shot, "go", lambda e: None, lambda: True)
     check("told when it's just the app's window", "just the app's window" in CAP["messages"][-1]["content"][1]["text"])
-    config.BRAIN = "local"
-    check("only the Free brain gets just the window", brain.Brain.window_only())
-    config.BRAIN = "claude"
-    check("...Claude sees the whole screen", not brain.Brain.window_only())
+    check("every brain gets just the app's window", brain.Brain.window_only())
 
 
 class Ollama(http.server.BaseHTTPRequestHandler):

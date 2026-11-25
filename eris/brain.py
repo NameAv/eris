@@ -145,8 +145,8 @@ TYPE wikipedia
 SAY Click the address bar at the very top, type wikipedia and press Enter.
 WAIT next"""
 
-AHEAD_PROMPT = ("(Planning ahead; not shown to me yet.) Suppose I click the box you just "
-                "pointed at and it works as expected. Give the step AFTER that, in the usual "
+AHEAD_PROMPT = ("(Planning ahead; not shown to me yet.) Suppose I do the step you just gave "
+                "me (the click, typing or key) and it works as expected. Give the step AFTER that, in the usual "
                 "lines but with NOBOX, and a WHAT that is the exact label written on the thing "
                 "to click on that next screen (e.g. WHAT Add Component). If you can't be sure "
                 "what the next screen will show, or the task will be done, reply just KEEP.")
@@ -469,9 +469,9 @@ class Brain:
 
     @staticmethod
     def window_only():
-        """Send just the app's window, not the whole monitor? (The Free brain: a small
-        model reads a window's words better at the same image size.)"""
-        return config.BRAIN == "local" and config.LOCAL_WINDOW_ONLY
+        """Send just the app's window, not the whole monitor? Fewer pixels to read (quicker),
+        its words come out sharper, and nothing on your other screens can mix her up."""
+        return config.WINDOW_ONLY
 
     def turn(self, shot, text, on_event, alive, notes=""):
         """Stream one step. Calls on_event(Event) as lines arrive. alive() -> False aborts.

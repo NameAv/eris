@@ -45,7 +45,15 @@ After that, just open **Eris** from the Desktop. No command window.
   basics. Settings, then Eris, shows what she's learned (and can forget it).
 - **She shows the plan.** For longer tasks she lists the steps ahead in the chat, and the line
   under the chat says which step you're on.
-- **Future sight.** While you do a click step she works out the next one, so
+- **She hears you while you talk.** Your words are turned into text at every pause as you
+  speak, so when you let go only your last few words are left: she starts looking sooner.
+- **"Click Images" is instant.** Ask for one thing on screen by its name and its box shows
+  straight away; her normal look then checks it.
+- **She looks at your window.** She picks the window under your mouse when you ask (or the
+  one you were last in) and sends just that window, not your whole screen: quicker, and she
+  won't mix it up with something on your other monitor.
+- **Future sight.** While you do a step (a click, or typing and pressing Enter) she works out
+  the next one, so
   the moment you click, its box and words come straight away (when what it names is on the new
   screen), and its words are already turned into speech so her voice starts at once. Tasks
   you've done before work the same way from their first step. Her normal look still checks

@@ -74,6 +74,7 @@ class Eris:
         self.last_what = ""     # what the box on screen points at (for lessons)
         self.hint_level = 0     # Eris Unity: how much help you've asked for on this step
         self.ahead = None       # (gen of the step on screen, the next step's words) planned early
+        self.focus = None       # {"hwnd", "front"}: the window this task is about (see _pick_window)
         self.waiting = None     # None | "click" | "next"
         self.steps = 0
         self.talking = False
@@ -154,6 +155,8 @@ class Eris:
             self.set_active(True)
             self.ui.cmd("active", True)
         self.ui.log("you", text)
+        if self.pre_token is None:             # typed (a spoken one picked it as you let go)
+            self._pick_window()                # which window this is about
         self.voice.stop()
         self.voice.ack()   # a quick "on it" so you know she heard you
         self._clear()
@@ -421,6 +424,7 @@ class Eris:
         if not soft:
             self.ui.cmd("status", "Looking...")
             self.ui.cmd("state", "thinking")
+        before = self.last_shot          # the screen as the step on show was set
         why = privacy.should_look_away()
         if why:   # never take a screenshot while you type a password / use a private app
             self.ui.cmd("status", "")
@@ -441,9 +445,13 @@ class Eris:
         self.mon = getattr(shot, "monitor", None) or (shot.left, shot.top, shot.width, shot.height)
         self.ui.cmd("monitor", *self.mon)
         auto = soft
-        if not soft:                       # a task done before: its next step can show at once
+        if not soft:                       # a task done before, or a plain "click X": at once
             self._learn_task(shot)
-            ahead = ahead or self._recipe_step()
+            ahead = ahead or self._recipe_step() or self._from_words(text, shot)
+        elif self.ahead and self.ahead[0] == self.box_gen:   # e.g. you typed and pressed Enter:
+            plan = self.ahead[1]                             # use it once what it names appears
+            if before is not None and not self._named(before, plan["what"]):
+                ahead = plan
         shown = bool(ahead) and self._show_ahead(my, shot, ahead, t0)
         if shown:                          # her real look checks it (and keeps what was asked)
             text += "\n\n" + AHEAD_CHECK_PROMPT.format(say=ahead["say"], what=ahead["what"])
@@ -451,7 +459,7 @@ class Eris:
             step = Step(self, my, shot, True, t0)
         if soft:
             self.ui.cmd("status", "Checking...")
-        if auto and not self.brain.moved_on(shot, self._step_now()):
+        if auto and not shown and not self.brain.moved_on(shot, self._step_now()):
             step.kept = True       # still working on it: no need for the full brain
         else:
             self.brain.turn(shot, text, step.on_event, step.alive, self._notes(shot))
@@ -471,7 +479,7 @@ class Eris:
                 self.waiting = self.waiting or "next"
                 self.ui.cmd("state", "guiding")
             self.watcher.rebase(delay=0.3, kept=True)   # nothing new: keep watching from here
-            if shown and self.waiting == "click" and config.AHEAD:
+            if shown and self.waiting and config.AHEAD:
                 threading.Thread(target=self._plan_ahead, args=(my, shot), daemon=True).start()
             return
         if not step.ended:
@@ -479,7 +487,7 @@ class Eris:
         if self.waiting == "click" and self.early_click == my:
             self.advance()   # you already clicked the box while she was talking
             return
-        if self.waiting == "click" and config.AHEAD:      # work out the next step while you click
+        if self.waiting and config.AHEAD:      # future sight: the next step, while you do this one
             threading.Thread(target=self._plan_ahead, args=(my, shot), daemon=True).start()
         if self.waiting:
             self.watcher.rebase()
@@ -519,6 +527,8 @@ class Eris:
         n = self._named(shot, plan["what"])
         if not n or not is_action(plan["say"]):
             return False
+        self.voice.stop()                  # whatever she was saying is about the old screen
+        self.ahead, self.auto_looks = None, 0
         step = Step(self, my, shot, False, t0)
         events = [Event("element", n), Event("what", plan["what"])]
         events += [Event(k, plan[k]) for k in ("type", "key") if plan.get(k)]
@@ -533,6 +543,26 @@ class Eris:
         self._set_check(my, shot)
         self.ui.log("debug", f"future sight: step shown in {time.time() - t0:.2f}s")
         return True
+
+    _ASKED = re.compile(r"^(?:please\s+)?(?:can you\s+)?(?:click|press|open|select|choose|pick|tap)"
+                        r"\s+(?:on\s+)?(?:the\s+)?(?P<name>.+?)(?:\s+(?:button|tab|link|icon|menu|option))?"
+                        r"(?:\s+please)?[.!?]*$", re.I)
+
+    def _from_words(self, text, shot):
+        """You asked for exactly one thing on screen by its name ("click Images"): a plan
+        that boxes it at once (her look then checks it). None for anything else."""
+        if self.steps or not self.task or text != self.task["text"]:
+            return None
+        m = self._ASKED.match(text.strip())
+        if not m:
+            return None
+        want = m.group("name").strip().lower()
+        els = getattr(shot, "elements", None) or []
+        same = [el for el in els if (el.get("name") or "").strip().lower() == want]
+        if len(same) != 1:
+            return None
+        name = same[0]["name"].strip()
+        return {"what": name, "say": f"Click {name}.", "wait": "click"}
 
     def _step_now(self):
         """The instruction on screen now (for the quick check)."""
@@ -597,7 +627,10 @@ class Eris:
         """Screenshot with private fields blacked out. For a spoken question, uses the
         one taken the moment you let go of the talk key (saves time). That one is
         only ever used for that question, never for a later step."""
-        pre, token = self.pre_shot, self.pre_token
+        token, waited = self.pre_token, time.time()
+        while allow_pre and token and not self.pre_shot and time.time() - waited < 1.0:
+            time.sleep(0.02)      # you were quicker than it: it's nearly done, don't take another
+        pre = self.pre_shot
         self.pre_shot = self.pre_token = None
         if allow_pre and pre and pre[0] is token and time.time() - pre[1] < 4:
             return pre[2]
@@ -610,7 +643,7 @@ class Eris:
         share their buttons (Unity, Blender, games) get their window's words read
         instead, and only those apps: browsers and normal apps don't need it. Private
         fields are blacked out first, so they're never read or sent."""
-        win = apps.front_window()
+        win = self._target_window()
         scan = {}
 
         def ask_windows():
@@ -672,8 +705,26 @@ class Eris:
         crop = img.crop((a - mon["left"], b - mon["top"], c - mon["left"], d - mon["top"]))
         return ocr.reader().read(crop, a, b)
 
+    def _pick_window(self):
+        """You're asking something: which window is it about? The one under your mouse
+        (you're usually pointing at what you're working on), else the one in front. Her
+        looks stay on it until you switch to another app yourself."""
+        front = apps.front_window()
+        win = apps.under_pointer() or front
+        self.focus = {"hwnd": win["hwnd"], "front": front and front["hwnd"]} if win else None
+        if win:
+            self.ui.log("debug", f"looking at: {win['name']} \"{win['title'][:50]}\"")
+
+    def _target_window(self):
+        front = apps.front_window()
+        f = self.focus
+        if not f or (front and front["hwnd"] not in (f["front"], f["hwnd"])):
+            return front          # you've switched apps since you asked: follow you
+        return apps.window(f["hwnd"]) or front
+
     def _prepare_shot(self, token):
         """Take the screenshot while your words are still being transcribed."""
+        self._pick_window()
         try:
             if not privacy.should_look_away():
                 shot = self._shoot()
@@ -818,6 +869,7 @@ class Eris:
             if text:
                 self.ask(text)
             else:
+                self.pre_token = None
                 self.ui.cmd("status", "")
                 self.ui.cmd("state", "ready")
                 self.ui.log("hint", "Didn't catch that. Hold the key while you talk.")

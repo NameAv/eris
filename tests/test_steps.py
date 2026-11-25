@@ -102,10 +102,19 @@ def test_recipes():
     saved = recipes.load()
     check("a finished task is kept as a recipe", len(saved) == 1 and len(saved[0]["steps"]) == 3
           and "Add Component" in saved[0]["steps"][1] and "type rigidbody" in saved[0]["steps"][2], saved)
-    e.brain.script = ["NOBOX\nSAY Sure.\nDONE"]
+    check("a kept step reads back as a plan", recipes.as_plan(saved[0]["steps"][2]).get("type") == "rigidbody"
+          and recipes.as_plan("Click Player. (Player)") == {"say": "Click Player.", "what": "Player", "wait": "click"})
+    e.voice.said.clear()
+    e.brain.script = ["KEEP"]
     e.ask("add a rigidbody to the player please")
     check("a similar request gets the steps that worked", wait_for(lambda: len(e.brain.notes) >= 5)
           and "these steps worked" in e.brain.notes[-1] and "Add Component" in e.brain.notes[-1])
+    check("...and its first step shows at once, then her look checks it (with what you asked)",
+          wait_for(lambda: e.waiting == "click" and not e.busy) and e.box == (16, 16, 124, 44)
+          and e.voice.said == ["Click Player in the Hierarchy."]
+          and e.brain.asked[-1].startswith("add a rigidbody") and "planned ahead" in e.brain.asked[-1],
+          (e.box, e.voice.said, e.brain.asked[-1][:80], e.waiting))
+    e.cancel()
     e.brain.script = ["NOBOX\nSAY Sure.\nDONE"]
     e.ask("make the camera follow the player")
     check("...but not a different one", wait_for(lambda: len(e.brain.notes) >= 6) and "worked" not in e.brain.notes[-1])
@@ -493,7 +502,7 @@ def test_planning_ahead():
           wait_for(lambda: e.box == (496, 496, 704, 544)) and e.voice.said[:1] == ["Click Add Component."])
     wait_for(lambda: len(e.brain.asked) == 2 and not e.busy)
     check("...then her real look checks it, and KEEP keeps it",
-          e.brain.asked[1].startswith(AHEAD_CHECK_PROMPT[:20]) and e.box == (496, 496, 704, 544)
+          e.brain.asked[1].startswith("I did that step") and AHEAD_CHECK_PROMPT[:30] in e.brain.asked[1] and e.box == (496, 496, 704, 544)
           and e.waiting == "click")
 
     e.brain.plan = {"what": "Add Component", "say": "Click Add Component.", "wait": "click"}

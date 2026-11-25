@@ -81,6 +81,7 @@ class Voice:
         self._first = None             # (gen, time) of the first line queued since the last stop
         self.sapi_speaking = False     # the Windows voice is speaking right now
         self.sapi_alive = False        # the Windows voice is up and running
+        self.made_early = {}           # (line, voice, rate) -> clip made before it's needed
         threading.Thread(target=self.prepare_acks, daemon=True).start()
         threading.Thread(target=self._play_loop, daemon=True).start()
         threading.Thread(target=self._sapi_loop, daemon=True).start()
@@ -92,13 +93,41 @@ class Voice:
             return
         if self._first is None or self._first[0] != self.gen:
             self._first = (self.gen, time.time())
-        if self._natural():
+        early = self.made_early.get(self._early_key(text)) if voice is None else None
+        if self._natural() and early and os.path.exists(early):
+            self.audio_q.put(_Clip(self.gen, text, path=early))     # made ahead: plays at once
+        elif self._natural():
             for piece in pieces(text):        # long lines start sooner in pieces
                 clip = _Clip(self.gen, piece, voice=voice)
                 self.audio_q.put(clip)
                 threading.Thread(target=self._make, args=(clip,), daemon=True).start()
         else:
             self.sapi_q.put(("say", text))
+
+    @staticmethod
+    def _early_key(text):
+        return text, config.VOICE_NAME, int(config.VOICE_RATE)
+
+    def prepare(self, text):
+        """Make a line's speech now, before it's needed (a step planned ahead), so that
+        when it's said it plays at once."""
+        if not (config.VOICE_ON and text and self._natural()):
+            return
+        key = self._early_key(text)
+
+        def make():
+            clip = _Clip(-1, text)
+            clip.path = os.path.join(self.tmp, f"early{abs(hash(key)) % 10**8}.mp3")
+            try:
+                import edge_tts
+                comm = edge_tts.Communicate(text, config.VOICE_NAME, rate=f"{int(config.VOICE_RATE) * 6:+d}%")
+                asyncio.run(asyncio.wait_for(comm.save(clip.path), 6))
+            except Exception:
+                return
+            self.made_early[key] = clip.path
+            while len(self.made_early) > 8:          # keep just the last few
+                self.made_early.pop(next(iter(self.made_early)))
+        threading.Thread(target=make, daemon=True).start()
 
     def ack(self):
         """A tiny instant reply ("On it.") so you know she heard you. Natural-voice

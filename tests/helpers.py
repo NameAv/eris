@@ -69,6 +69,9 @@ class FakeVoice:
     def ack(self):
         pass
 
+    def prepare(self, text):
+        self.prepared = text
+
     def busy(self):
         return False
 

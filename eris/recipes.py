@@ -17,6 +17,22 @@ STOP = {"the", "and", "for", "you", "can", "how", "what", "with", "into", "onto"
         "have", "make", "get", "let", "lets", "there", "from", "your", "mine", "about"}
 
 
+_STEP = re.compile(r"^(?P<say>.+?)(?: \((?P<what>[^()]+)\))?(?: - type (?P<type>.+?))?"
+                   r"(?: - press (?P<key>.+?))?(?P<drag> - drag it to the drop target)?$")
+
+
+def as_plan(step):
+    """A kept step ("Click Add Component (the Add Component button) - type rigid") as a
+    plan Eris can show at once: {"say", "what", "type", "key", "wait"}, or None."""
+    m = _STEP.match(step or "")
+    if not m or m.group("drag"):
+        return None
+    plan = {k: m.group(k) for k in ("say", "what", "type", "key") if m.group(k)}
+    plan["what"] = plan.get("what") or plan["say"]
+    plan["wait"] = "next" if plan.get("type") or plan.get("key") else "click"
+    return plan
+
+
 def file():
     return settings.folder() / "recipes.json"
 

@@ -46,10 +46,10 @@ WRONG_BOX_PROMPT = ("That box was on the wrong thing. Here's my screen again. Lo
 KEEP_MISTAKES = 30           # "Wrong box" screenshots kept for the test lab (oldest go first)
 STUCK_PROMPT = ("I'm stuck on this step. Here's my screen. Give me hint level {level} of 3 "
                 "(see the teacher rules). Don't do it for me.")
-AHEAD_CHECK_PROMPT = ("I did that step. Here's my screen now. To be quick, I've already been shown "
-                      "the step you planned next: \"{say}\" (boxed: {what}). If that's right for "
-                      "this screen, reply with just KEEP. If not, give the right step now; it "
-                      "replaces that one.")
+AHEAD_CHECK_PROMPT = ("Here's my screen now. To be quick, I've already been shown a step planned "
+                      "ahead (or from last time): \"{say}\" (boxed: {what}). If that's the right "
+                      "next step for this screen, reply with just KEEP. If not, give the right "
+                      "step now; it replaces that one.")
 NEXT_STEP_PROMPT = ("I did that step. Here's my screen now. Check it worked, then give the "
                     "next step, or DONE if the task is finished. If the screen is still loading, "
                     "reply with just KEEP and you'll get another look when it changes.")
@@ -441,8 +441,12 @@ class Eris:
         self.mon = getattr(shot, "monitor", None) or (shot.left, shot.top, shot.width, shot.height)
         self.ui.cmd("monitor", *self.mon)
         auto = soft
-        if ahead and self._show_ahead(my, shot, ahead, t0):
-            text = AHEAD_CHECK_PROMPT.format(say=ahead["say"], what=ahead["what"])
+        if not soft:                       # a task done before: its next step can show at once
+            self._learn_task(shot)
+            ahead = ahead or self._recipe_step()
+        shown = bool(ahead) and self._show_ahead(my, shot, ahead, t0)
+        if shown:                          # her real look checks it (and keeps what was asked)
+            text += "\n\n" + AHEAD_CHECK_PROMPT.format(say=ahead["say"], what=ahead["what"])
             soft = True
             step = Step(self, my, shot, True, t0)
         if soft:
@@ -467,7 +471,7 @@ class Eris:
                 self.waiting = self.waiting or "next"
                 self.ui.cmd("state", "guiding")
             self.watcher.rebase(delay=0.3, kept=True)   # nothing new: keep watching from here
-            if text.startswith(AHEAD_CHECK_PROMPT[:20]) and self.waiting == "click" and config.AHEAD:
+            if shown and self.waiting == "click" and config.AHEAD:
                 threading.Thread(target=self._plan_ahead, args=(my, shot), daemon=True).start()
             return
         if not step.ended:
@@ -490,6 +494,7 @@ class Eris:
         plan = self.brain.predict(shot)
         if plan and self.box_gen == my:
             self.ahead = (my, plan)
+            self.voice.prepare(plan["say"])      # its words ready to play the moment it shows
             self.ui.log("debug", f"planned ahead: {plan['say']!r} ({plan['what']!r})")
 
     @staticmethod
@@ -534,23 +539,37 @@ class Eris:
         t = self.task
         return t["steps"][-1] if t and t["steps"] else self.last_what
 
+    def _learn_task(self, shot):
+        """The task's first look: which app, any recipe, lessons and handbook pages for it."""
+        t = self.task
+        if t is None or t["app"] is not None:
+            return
+        app = shot.app.get("name") if isinstance(getattr(shot, "app", None), dict) else ""
+        t["app"] = app or ""
+        t["recipe"] = recipes.find(t["text"], app) if app else None
+        t["learned"] = experience.notes(app, t["text"])
+        if app == "Unity":
+            self._note_unity_version(shot.app.get("title", ""))
+        if config.MODE == "unity":    # the handbook: the lesson's page, or the pages your question needs
+            lesson = t["lesson"] or course.current()
+            t["book"] = unity_book.notes("" if t["lesson"] else t["text"], lesson and lesson.id)
+        if t["recipe"]:
+            self.ui.log("debug", f"using a recipe: {t['recipe']['task']!r}")
+
+    def _recipe_step(self):
+        """The next step of the recipe for this task, as a plan (see _show_ahead), or None."""
+        t = self.task
+        steps = (t or {}).get("recipe") and t["recipe"]["steps"]
+        if not steps or self.steps >= len(steps):
+            return None
+        return recipes.as_plan(steps[self.steps])
+
     def _notes(self, shot):
         """Extra context for this look: a recipe that worked before, what the last step changed."""
         notes = []
         t = self.task
         if t is not None:
-            if t["app"] is None:            # the task's first look: which app, any recipe for it?
-                app = shot.app.get("name") if isinstance(getattr(shot, "app", None), dict) else ""
-                t["app"] = app or ""
-                t["recipe"] = recipes.find(t["text"], app) if app else None
-                t["learned"] = experience.notes(app, t["text"])
-                if app == "Unity":
-                    self._note_unity_version(shot.app.get("title", ""))
-                if config.MODE == "unity":    # the handbook: the lesson's page, or the pages your question needs
-                    lesson = t["lesson"] or course.current()
-                    t["book"] = unity_book.notes("" if t["lesson"] else t["text"], lesson and lesson.id)
-                if t["recipe"]:
-                    self.ui.log("debug", f"using a recipe: {t['recipe']['task']!r}")
+            self._learn_task(shot)
             if t["recipe"]:
                 notes.append(recipes.describe(t["recipe"], self.steps + 1))
             if t["learned"]:

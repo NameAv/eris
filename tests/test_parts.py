@@ -621,6 +621,22 @@ def test_unity_project():
     check("no project found: nothing", up.notes({"name": "Unity", "title": "Other - Unity"}) == "")
 
 
+def test_voice_made_early():
+    import tempfile
+    from eris.speech import Voice
+    v = Voice()
+    v._natural = lambda: True
+    path = tempfile.mktemp(suffix=".mp3")
+    open(path, "wb").write(b"x")
+    config.VOICE_ON = True
+    v.made_early[v._early_key("Click Images.")] = path
+    v.say("Click Images.")
+    clip = v.audio_q.get_nowait()
+    check("a line made early plays straight away", clip.path == path and clip.ready.is_set())
+    v.say("Something else entirely, said for the first time here.")
+    check("other lines are made as usual", v.audio_q.get_nowait().path != path)
+
+
 def test_safe_updates():
     import shutil
     import tempfile

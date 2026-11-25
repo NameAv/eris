@@ -473,6 +473,8 @@ class Eris:
                 t["app"] = app or ""
                 t["recipe"] = recipes.find(t["text"], app) if app else None
                 t["learned"] = experience.notes(app, t["text"])
+                if app == "Unity":
+                    self._note_unity_version(shot.app.get("title", ""))
                 if config.MODE == "unity":    # the handbook: the lesson's page, or the pages your question needs
                     lesson = t["lesson"] or course.current()
                     t["book"] = unity_book.notes("" if t["lesson"] else t["text"], lesson and lesson.id)
@@ -488,6 +490,14 @@ class Eris:
             notes.append(self.pending_note)
             self.pending_note = ""
         return "\n\n".join(notes)
+
+    def _note_unity_version(self, title):
+        """Keep the Unity version from its title bar, so Eris Unity teaches that version."""
+        ver = unity_book.version_in(title)
+        if ver and ver != config.UNITY_VERSION:
+            config.UNITY_VERSION = ver
+            settings.save()
+            self.ui.log("debug", f"Unity version: {ver}")
 
     def _take_shot(self, allow_pre=False):
         """Screenshot with private fields blacked out. For a spoken question, uses the

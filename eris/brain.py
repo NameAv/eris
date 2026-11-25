@@ -222,7 +222,7 @@ def teacher_text():
     """The teacher's rules and where they are in the course ("" outside Eris Unity)."""
     if config.MODE != "unity":
         return ""
-    return f"{TEACH}\n\n{unity_book.CORE}\n\n{course.summary()}"
+    return f"{TEACH}\n\n{unity_book.CORE}\n\n{course.summary()} {unity_book.about_version()}"
 
 
 COORDS_TEXT = {
@@ -328,7 +328,7 @@ class Brain:
         system = [{"type": "text", "text": SYSTEM, "cache_control": CACHE}]
         if config.MODE == "unity":
             system.append({"type": "text", "text": TEACH + "\n\n" + unity_book.CORE, "cache_control": CACHE})
-            system.append({"type": "text", "text": course.summary()})
+            system.append({"type": "text", "text": f"{course.summary()} {unity_book.about_version()}"})
         mem = memory_text()
         if mem:   # after the cached block, so new memories don't break that cache
             system.append({"type": "text", "text": mem})

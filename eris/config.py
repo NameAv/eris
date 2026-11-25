@@ -70,6 +70,8 @@ UPDATES = "ask"         # "ask": check on startup and show the Update button. "o
 MODE = "guide"          # "guide" (Eris: help with anything) or "unity" (Eris Unity: teaches you
                         # to make your own game in Unity, and never makes it for you)
 
+UNITY_VERSION = ""      # the Unity version she last saw in its title bar (Eris Unity teaches that one)
+
 # --- Eris herself ---
 VIBE = "friendly"       # "calm", "friendly" or "cheeky"
 USER_NAME = ""          # what she calls you

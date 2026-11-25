@@ -9,6 +9,30 @@ Only well-established facts. Where Unity versions differ, the page says so and t
 to read the screen: a wrong menu path taught as fact is worse than none."""
 import re
 
+from . import config
+
+# Unity's window title ends with its version: "... - Unity 6.3 LTS (6000.3.2f1) <DX12>"
+_VERSION = re.compile(r"\b(6\d{3}\.\d+\.\d+[abfp]\d+|20\d\d\.\d+\.\d+[abfp]\d+)\b")
+
+
+def version_in(title):
+    """The editor version in a Unity window title ("6000.3.2f1"), or ""."""
+    found = _VERSION.search(title or "")
+    return found.group(1) if found else ""
+
+
+def about_version():
+    """For the AI: which Unity they use and where its docs are ("" until she's seen Unity)."""
+    ver = config.UNITY_VERSION
+    if not ver:
+        return ("Their Unity version isn't known yet: they install whatever Unity Hub "
+                "recommends (a Unity 6 version).")
+    major, minor = ver.split(".")[:2]
+    name = f"Unity 6.{minor}" if major.startswith("6") and len(major) == 4 else f"Unity {major}.{minor}"
+    return (f"They use {name} ({ver}), seen in Unity's title bar. Teach for that version. Its "
+            f"manual: docs.unity3d.com/{major}.{minor}/Documentation/Manual/ and scripting "
+            f"reference: docs.unity3d.com/{major}.{minor}/Documentation/ScriptReference/.")
+
 CORE = """Unity handbook (Unity 6, checked facts; when the screen differs, the screen wins: \
 menu names shift between versions, so read the real menu before naming an item).
 
@@ -79,6 +103,9 @@ and Scale; every object has one.
 - The Scene view gizmo (top right) switches views; clicking its centre toggles perspective \
 and isometric."""),
     "project": ("project unity hub template urp scene folder git", """\
+- Install the editor Unity Hub recommends (Installs > Install Editor; the recommended one \
+is the latest LTS, built for stability). Keep one project on one version: upgrading mid-way \
+can break things, so back up (commit) first and only upgrade for a reason.
 - Unity Hub > Projects > New project. Templates: Universal 3D uses URP (the Universal Render \
 Pipeline), the right choice for most open worlds on PC.
 - New scene: File > New Scene; save it with File > Save As into Assets/Scenes. Create folders \

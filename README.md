@@ -83,7 +83,8 @@ and never makes it for you. Every script, line of story, quest and level is your
   and its shortcuts, C# basics, what changed in Unity 6 (old tutorials still show the old
   names), what the common Console errors mean, and a page for each lesson. Each lesson
   brings its own page, and questions bring the pages they mention (ask about prefabs and
-  she gets the prefab page). When she isn't sure, she tells you where to look it up rather
+  she gets the prefab page). She reads your Unity version from its title bar and teaches
+  that version, with links to its own manual. When she isn't sure, she tells you where to look it up rather
   than guess.
 - **Stuck?** Each press of **Stuck** gives a bigger hint: a nudge, then the exact menu or
   function, then she points at it and explains it fully.

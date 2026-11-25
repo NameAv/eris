@@ -431,6 +431,16 @@ def test_eris_unity():
         check("a task gets its lesson's handbook page and the ones it mentions",
               "Edit Terrain Layers" in page and "Prefab Variant" in page and "NavMesh" not in page)
         check("nothing unrelated gets a page", unity_book.notes("hello there") == "")
+        check("the version is read from Unity's title bar",
+              unity_book.version_in("Game - World - Windows, Mac, Linux - Unity 6.3 LTS (6000.3.2f1) <DX12>") == "6000.3.2f1"
+              and unity_book.version_in("Game - Unity 2022.3.10f1 <DX11>") == "2022.3.10f1"
+              and unity_book.version_in("Untitled - Notepad") == "")
+        old = config.UNITY_VERSION
+        e._note_unity_version("Game - World - Windows, Mac, Linux - Unity 6.6 (6000.6.10f1) <DX12>")
+        check("...kept, and she teaches that version with its docs",
+              config.UNITY_VERSION == "6000.6.10f1" and "Unity 6.6 (6000.6.10f1)" in brain.teacher_text()
+              and "docs.unity3d.com/6000.6/Documentation/Manual/" in brain.teacher_text())
+        config.UNITY_VERSION = old
         check("a lesson's first look gets its own handbook page, and only that",
               "Align With View" not in e.brain.notes[0] and "Gizmo" not in e.brain.notes[0]
               and "Window > Layouts" in e.brain.notes[0] and "CharacterController" not in e.brain.notes[0])

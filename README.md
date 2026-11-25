@@ -79,6 +79,12 @@ and never makes it for you. Every script, line of story, quest and level is your
   says what the next line must do and names the Unity function for it, and you type it. Red
   Console errors get explained in plain words, and you fix them. After a step she often adds a
   short *why* (shown in the chat, read out after the instruction).
+- **Her Unity handbook.** In Eris Unity she has checked facts about Unity 6: the editor
+  and its shortcuts, C# basics, what changed in Unity 6 (old tutorials still show the old
+  names), what the common Console errors mean, and a page for each lesson. Each lesson
+  brings its own page, and questions bring the pages they mention (ask about prefabs and
+  she gets the prefab page). When she isn't sure, she tells you where to look it up rather
+  than guess.
 - **Stuck?** Each press of **Stuck** gives a bigger hint: a nudge, then the exact menu or
   function, then she points at it and explains it fully.
 - **Steam:** Valve's AI disclosure covers AI-made content that ships in your game, not tools
@@ -226,6 +232,7 @@ If it can't connect, Eris switches to the built-in Windows voice by herself. Use
 - `eris/experience.py`: lessons from corrected mistakes, and which apps you know well
 - `eris/knowledge.py`: a little know-how about popular apps
 - `eris/course.py`: Eris Unity's lessons and your progress through them
+- `eris/unity_book.py`: Eris Unity's handbook of checked Unity 6 facts
 - `eris/glitch.py`: the Neon look's drifting, glitching banner
 - `eris/hud.py`: the Neon HUD box shapes, drag connector and notes
 - `eris/overlay.py`: the red box (four solid bars plus the in-box type hint)

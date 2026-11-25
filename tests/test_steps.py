@@ -425,6 +425,15 @@ def test_eris_unity():
         check("a lesson gets more steps than a quick task", e._scale() == 3)
         course.complete(first)
         check("finishing a lesson moves you on", course.current() == course.LESSONS[1] and course.done() == [first.id])
+        from eris import unity_book
+        check("the Unity handbook goes to the AI", "linearVelocity" in brain.teacher_text())
+        page = unity_book.notes("how do I make a prefab of this rock", "terrain")
+        check("a task gets its lesson's handbook page and the ones it mentions",
+              "Edit Terrain Layers" in page and "Prefab Variant" in page and "NavMesh" not in page)
+        check("nothing unrelated gets a page", unity_book.notes("hello there") == "")
+        check("a lesson's first look gets its own handbook page, and only that",
+              "Align With View" not in e.brain.notes[0] and "Gizmo" not in e.brain.notes[0]
+              and "Window > Layouts" in e.brain.notes[0] and "CharacterController" not in e.brain.notes[0])
         check("the teacher rules and the course go to the AI",
               "Never write their game for them" in brain.teacher_text() and "1 of 20" in brain.teacher_text())
         config.MODE = "guide"

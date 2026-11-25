@@ -10,7 +10,7 @@ import urllib.request
 
 import anthropic
 
-from . import apps, config, course, elements, knowledge, screen, settings
+from . import apps, config, course, elements, knowledge, screen, settings, unity_book
 from .protocol import Event, LineStream, parse_line
 
 SYSTEM = """You are Eris, a guide who lives on the user's computer. They might be working \
@@ -195,6 +195,10 @@ anything above about doing things for them.
 - Never write their game for them: no finished scripts, story, dialogue, quest text, \
 character or place names, level layouts, art, music or other content, not even "just this \
 once". If they ask, say kindly that it has to be theirs, and teach them the first step.
+- Facts: follow the Unity handbook below and the handbook pages sent with a task; they're \
+checked. The screen wins if their version looks different. Never guess a menu path, API \
+or setting: if you're not sure, say so and show them where to look it up (the Unity Manual \
+or Scripting Reference, Help > Unity Manual).
 - Editor steps: box things and guide as usual. Pointing at where things are is teaching.
 - Code (in Visual Studio, VS Code or Rider): say in plain words what the next line or two \
 must do and name the Unity API that does it (e.g. CharacterController.Move, \
@@ -216,7 +220,9 @@ press Play now?", then WAIT next."""
 
 def teacher_text():
     """The teacher's rules and where they are in the course ("" outside Eris Unity)."""
-    return TEACH + "\n\n" + course.summary() if config.MODE == "unity" else ""
+    if config.MODE != "unity":
+        return ""
+    return f"{TEACH}\n\n{unity_book.CORE}\n\n{course.summary()}"
 
 
 COORDS_TEXT = {
@@ -321,7 +327,7 @@ class Brain:
     def _system(self):
         system = [{"type": "text", "text": SYSTEM, "cache_control": CACHE}]
         if config.MODE == "unity":
-            system.append({"type": "text", "text": TEACH, "cache_control": CACHE})
+            system.append({"type": "text", "text": TEACH + "\n\n" + unity_book.CORE, "cache_control": CACHE})
             system.append({"type": "text", "text": course.summary()})
         mem = memory_text()
         if mem:   # after the cached block, so new memories don't break that cache

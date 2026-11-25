@@ -11,7 +11,7 @@ import traceback
 
 from pynput import keyboard
 
-from . import apps, config, course, elements, experience, ocr, privacy, recipes, screen, settings, snap
+from . import apps, config, course, elements, experience, ocr, privacy, recipes, screen, settings, snap, unity_book
 from .brain import Brain, locate
 from .speech import Voice, beep
 from .tracker import Tracker
@@ -143,7 +143,7 @@ class Eris:
             self.ui.cmd("state", "ready")
 
     # ---------- asking ----------
-    def ask(self, text):
+    def ask(self, text, lesson=None):
         if not self.active:
             self.set_active(True)
             self.ui.cmd("active", True)
@@ -154,7 +154,8 @@ class Eris:
         self.steps = 0
         self.auto_looks = self.task_looks = 0
         self.task = {"text": text, "app": None, "steps": [], "wrong": False, "recipe": None,
-                     "learned": "", "plan": [], "wrong_what": None}
+                     "learned": "", "book": "", "plan": [], "wrong_what": None,
+                     "lesson": lesson}
         self.check, self.retried, self.pending_note = None, False, ""
         self.hint_level = 0
         my = self._new_gen()
@@ -169,7 +170,7 @@ class Eris:
         """Eris Unity: teach this lesson, starting from what's on screen."""
         self.new_task()
         self.ui.log("info", f"Lesson {course.number(lesson)}: {lesson.title}")
-        self.ask(course.task(lesson))
+        self.ask(course.task(lesson), lesson)
 
     def stuck(self):
         """Eris Unity: you asked for more help with this step (up to 3 hints, each bigger)."""
@@ -472,12 +473,17 @@ class Eris:
                 t["app"] = app or ""
                 t["recipe"] = recipes.find(t["text"], app) if app else None
                 t["learned"] = experience.notes(app, t["text"])
+                if config.MODE == "unity":    # the handbook: the lesson's page, or the pages your question needs
+                    lesson = t["lesson"] or course.current()
+                    t["book"] = unity_book.notes("" if t["lesson"] else t["text"], lesson and lesson.id)
                 if t["recipe"]:
                     self.ui.log("debug", f"using a recipe: {t['recipe']['task']!r}")
             if t["recipe"]:
                 notes.append(recipes.describe(t["recipe"], self.steps + 1))
             if t["learned"]:
                 notes.append(t["learned"])
+            if t["book"]:
+                notes.append(t["book"])
         if self.pending_note:
             notes.append(self.pending_note)
             self.pending_note = ""

@@ -476,6 +476,48 @@ def brain_hint(level):
     return STUCK_PROMPT.format(level=level)
 
 
+def test_planning_ahead():
+    from eris import config
+    from eris.core import AHEAD_CHECK_PROMPT
+    shot = fake_shot(elements=[{"type": 50000, "name": "Add Component", "rect": (500, 500, 700, 540)},
+                               {"type": 50000, "name": "Player", "rect": (20, 20, 120, 40)}])
+    e, ui, _ = make_eris(shot)
+    config.AHEAD = True
+    e.brain.plan = {"what": "Add Component", "say": "Click Add Component.", "wait": "click"}
+    e.brain.script = ["ELEMENT 2\nSAY Click Player.\nWAIT click", "KEEP"]
+    e.ask("add a component to my player")
+    check("the next step is planned while you do this one", wait_for(lambda: e.ahead is not None))
+    e.voice.said.clear()
+    e.on_click(70, 30, None, True)
+    check("after your click its box shows at once, on the new screen",
+          wait_for(lambda: e.box == (496, 496, 704, 544)) and e.voice.said[:1] == ["Click Add Component."])
+    wait_for(lambda: len(e.brain.asked) == 2 and not e.busy)
+    check("...then her real look checks it, and KEEP keeps it",
+          e.brain.asked[1].startswith(AHEAD_CHECK_PROMPT[:20]) and e.box == (496, 496, 704, 544)
+          and e.waiting == "click")
+
+    e.brain.plan = {"what": "Add Component", "say": "Click Add Component.", "wait": "click"}
+    e.brain.script = ["ELEMENT 2\nSAY Click Player.\nWAIT click", "BOX 10 10 20 20\nSAY Click Inspector.\nWAIT click"]
+    e.ask("again")
+    wait_for(lambda: e.ahead is not None and not e.busy)
+    e.on_click(70, 30, None, True)
+    check("if her real look disagrees, its step replaces the planned one",
+          wait_for(lambda: e.box == (20, 20, 40, 40)) and "Click Inspector." in e.voice.said)
+
+    e.brain.plan = {"what": "Rigidbody", "say": "Click Rigidbody.", "wait": "click"}
+    e.brain.script = ["ELEMENT 2\nSAY Click Player.\nWAIT click", "NOBOX\nSAY All done.\nDONE"]
+    e.ask("once more")
+    wait_for(lambda: e.ahead is not None and not e.busy)
+    asked = len(e.brain.asked)
+    e.on_click(70, 30, None, True)
+    wait_for(lambda: len(e.brain.asked) > asked and not e.busy)
+    check("a plan whose button isn't on screen isn't shown: she looks as usual",
+          e.brain.asked[-1].startswith("I did that step") and e.box is None)
+    check("a name is only used when exactly one thing has it",
+          e._named(shot, "the Add Component button") == 1 and e._named(shot, "Rigidbody") is None)
+    e.brain.plan = None
+
+
 for name, fn in list(globals().items()):
     if name.startswith("test_"):
         fn()

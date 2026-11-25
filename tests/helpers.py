@@ -79,6 +79,7 @@ class ScriptedBrain:
     def __init__(self, log=None):
         self.script, self.asked, self.history, self.notes = [], [], [], []
         self.moved = True       # the quick check's answer
+        self.plan = None        # the next step planned early
 
     def snap(self):
         return 1
@@ -91,6 +92,9 @@ class ScriptedBrain:
 
     def moved_on(self, shot, step):
         return self.moved
+
+    def predict(self, shot):
+        return self.plan
 
     def reset(self):
         self.history = []

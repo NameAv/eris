@@ -145,6 +145,12 @@ TYPE wikipedia
 SAY Click the address bar at the very top, type wikipedia and press Enter.
 WAIT next"""
 
+AHEAD_PROMPT = ("(Planning ahead; not shown to me yet.) Suppose I click the box you just "
+                "pointed at and it works as expected. Give the step AFTER that, in the usual "
+                "lines but with NOBOX, and a WHAT that is the exact label written on the thing "
+                "to click on that next screen (e.g. WHAT Add Component). If you can't be sure "
+                "what the next screen will show, or the task will be done, reply just KEEP.")
+
 QUICK_SYSTEM = """You glance at a learner's screen while they work on one step of a Unity \
 lesson. Reply with ONE word. KEEP: they haven't finished the step yet (still typing, \
 partway through, loading) or nothing important changed. MOVED: the step is done, \
@@ -395,6 +401,31 @@ class Brain:
                        output_config={"effort": config.EFFORT}, **no_thinking(), **self._tools())
         except Exception as e:
             self.log("debug", f"prewarm skipped: {e}")
+
+    def predict(self, shot):
+        """The next step's words, worked out while you do this one (see core: planning
+        ahead): {"what", "say", "type", "key", "wait"} or None. Not added to the history."""
+        client = self._get_client() if config.BRAIN != "local" else None
+        if not client:
+            return None
+        messages = self._cached_history() + [{"role": "user", "content": [
+            {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": shot.b64}},
+            {"type": "text", "text": AHEAD_PROMPT}]}]
+        try:
+            reply = claude(client, "create", max_tokens=config.MAX_TOKENS, system=self._system(),
+                           messages=messages, output_config={"effort": config.EFFORT},
+                           **no_thinking(), **self._tools())
+            text = "".join(b.text for b in reply.content if b.type == "text")
+        except Exception as e:
+            self.log("debug", f"planning ahead skipped: {e}")
+            return None
+        plan = {}
+        for ev in LineStream().feed(text + "\n"):
+            if ev.kind in ("keep", "done", "box", "element"):
+                return None                   # can't tell, finished, or a guessed position
+            if ev.kind in ("what", "say", "type", "key", "wait") and ev.kind not in plan:
+                plan[ev.kind] = ev.value
+        return plan if plan.get("what") and plan.get("say") else None
 
     def moved_on(self, shot, step):
         """Eris Unity on Opus: a quick, very cheap Haiku look at an automatic check. False =

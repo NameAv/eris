@@ -13,6 +13,7 @@ from pynput import keyboard
 
 from . import apps, config, course, elements, experience, ocr, privacy, recipes, screen, settings, snap, unity_book, unity_project
 from .brain import Brain, locate
+from .protocol import Event
 from .speech import Voice, beep
 from .tracker import Tracker
 from .watcher import STILL as SCREEN_STILL, Watcher, changed as screen_changed
@@ -45,6 +46,10 @@ WRONG_BOX_PROMPT = ("That box was on the wrong thing. Here's my screen again. Lo
 KEEP_MISTAKES = 30           # "Wrong box" screenshots kept for the test lab (oldest go first)
 STUCK_PROMPT = ("I'm stuck on this step. Here's my screen. Give me hint level {level} of 3 "
                 "(see the teacher rules). Don't do it for me.")
+AHEAD_CHECK_PROMPT = ("I did that step. Here's my screen now. To be quick, I've already been shown "
+                      "the step you planned next: \"{say}\" (boxed: {what}). If that's right for "
+                      "this screen, reply with just KEEP. If not, give the right step now; it "
+                      "replaces that one.")
 NEXT_STEP_PROMPT = ("I did that step. Here's my screen now. Check it worked, then give the "
                     "next step, or DONE if the task is finished. If the screen is still loading, "
                     "reply with just KEEP and you'll get another look when it changes.")
@@ -68,6 +73,7 @@ class Eris:
         self.last_key = 0.0     # when you last pressed a key (not which key)
         self.last_what = ""     # what the box on screen points at (for lessons)
         self.hint_level = 0     # Eris Unity: how much help you've asked for on this step
+        self.ahead = None       # (gen of the step on screen, the next step's words) planned early
         self.waiting = None     # None | "click" | "next"
         self.steps = 0
         self.talking = False
@@ -194,6 +200,8 @@ class Eris:
         if not self.waiting:
             return
         ref, self.check = self.check, None
+        planned = self.ahead[1] if clicked and self.ahead and self.ahead[0] == self.box_gen else None
+        self.ahead = None
         t = self.task
         if t and t["wrong_what"] and self.last_what and self.last_what != t["wrong_what"]:
             experience.learn(t["app"], t["text"], t["wrong_what"], self.last_what)   # that one was right
@@ -210,9 +218,9 @@ class Eris:
             self.voice.say(msg)
             return
 
-        threading.Thread(target=self._after_step, args=(my, ref, clicked), daemon=True).start()
+        threading.Thread(target=self._after_step, args=(my, ref, clicked, planned), daemon=True).start()
 
-    def _after_step(self, my, ref, clicked):
+    def _after_step(self, my, ref, clicked, planned=None):
         """A moment after the step: check what changed (free), then look again."""
         time.sleep(config.SETTLE_DELAY)   # let menus/panels open first
         if my != self.gen:
@@ -227,7 +235,7 @@ class Eris:
         if seen:
             self.pending_note = ("(Quick check after that step: "
                                  + ("nothing on the screen changed" if seen == "nothing" else seen) + ".)")
-        self._turn_safe(my, NEXT_STEP_PROMPT)
+        self._turn_safe(my, NEXT_STEP_PROMPT, ahead=None if seen == "nothing" else planned)
 
     # ---------- checking a step, recipes ----------
     def _settle(self, my, ref, longest=3.0, give_up=1.5):
@@ -390,11 +398,11 @@ class Eris:
     def busy(self):
         return self._busy > 0
 
-    def _turn_safe(self, my, text, soft=False, allow_pre=False):
+    def _turn_safe(self, my, text, soft=False, allow_pre=False, ahead=None):
         with self.lock:
             self._busy += 1
         try:
-            self._turn(my, text, soft, allow_pre)
+            self._turn(my, text, soft, allow_pre, ahead)
         except Exception as e:
             self.ui.log("error", f"Something broke: {e}")
             self.ui.log("debug", traceback.format_exc())
@@ -404,9 +412,11 @@ class Eris:
             with self.lock:
                 self._busy -= 1
 
-    def _turn(self, my, text, soft=False, allow_pre=False):
+    def _turn(self, my, text, soft=False, allow_pre=False, ahead=None):
         """One step. soft=True is an automatic look: the current box stays up
-        unless the brain has something new to say (it can reply KEEP)."""
+        unless the brain has something new to say (it can reply KEEP). ahead: the next
+        step's words, planned while you did this one: shown at once if what it names is
+        on screen, then checked by her real look (which replaces it only if it's wrong)."""
         t0 = time.time()
         if not soft:
             self.ui.cmd("status", "Looking...")
@@ -430,9 +440,14 @@ class Eris:
             return
         self.mon = getattr(shot, "monitor", None) or (shot.left, shot.top, shot.width, shot.height)
         self.ui.cmd("monitor", *self.mon)
+        auto = soft
+        if ahead and self._show_ahead(my, shot, ahead, t0):
+            text = AHEAD_CHECK_PROMPT.format(say=ahead["say"], what=ahead["what"])
+            soft = True
+            step = Step(self, my, shot, True, t0)
         if soft:
             self.ui.cmd("status", "Checking...")
-        if soft and not self.brain.moved_on(shot, self._step_now()):
+        if auto and not self.brain.moved_on(shot, self._step_now()):
             step.kept = True       # still working on it: no need for the full brain
         else:
             self.brain.turn(shot, text, step.on_event, step.alive, self._notes(shot))
@@ -441,7 +456,7 @@ class Eris:
         step.finish_talking()
         step.track()
         self.ui.log("debug", "speed: " + " · ".join(f"{k} {v:.2f}s" for k, v in step.times.items())
-                    + f" ({config.BRAIN}{', automatic look' if soft else ''})")
+                    + f" ({config.BRAIN}{', automatic look' if auto else ', checking the planned step' if soft else ''})")
         if step.avatar and step.final:
             threading.Thread(target=step.save_avatar, daemon=True).start()
         if not step.alive():
@@ -452,12 +467,16 @@ class Eris:
                 self.waiting = self.waiting or "next"
                 self.ui.cmd("state", "guiding")
             self.watcher.rebase(delay=0.3, kept=True)   # nothing new: keep watching from here
+            if text.startswith(AHEAD_CHECK_PROMPT[:20]) and self.waiting == "click" and config.AHEAD:
+                threading.Thread(target=self._plan_ahead, args=(my, shot), daemon=True).start()
             return
         if not step.ended:
             self.waiting = "next"
         if self.waiting == "click" and self.early_click == my:
             self.advance()   # you already clicked the box while she was talking
             return
+        if self.waiting == "click" and config.AHEAD:      # work out the next step while you click
+            threading.Thread(target=self._plan_ahead, args=(my, shot), daemon=True).start()
         if self.waiting:
             self.watcher.rebase()
             self._set_check(my, shot)
@@ -465,6 +484,50 @@ class Eris:
                 self.told_watch = True
                 self.ui.log("info", "I'm watching your screen and will notice when you're done "
                                     f"(or press {config.NEXT_KEY.upper()}).")
+
+    # ---------- planning ahead ----------
+    def _plan_ahead(self, my, shot):
+        plan = self.brain.predict(shot)
+        if plan and self.box_gen == my:
+            self.ahead = (my, plan)
+            self.ui.log("debug", f"planned ahead: {plan['say']!r} ({plan['what']!r})")
+
+    @staticmethod
+    def _named(shot, what):
+        """The one element on screen whose name is `what` (or the longest name inside it), or None."""
+        els = getattr(shot, "elements", None) or []
+        names = [(el.get("name") or "").strip().lower() for el in els]
+        want = what.strip().strip('"').lower()
+        exact = [i for i, n in enumerate(names, 1) if n and n == want]
+        if len(exact) == 1:
+            return exact[0]
+        inside = [(len(n), i) for i, n in enumerate(names, 1) if len(n) >= 4 and n in want]
+        if not inside:
+            return None
+        longest = max(inside)[0]
+        best = [i for size, i in inside if size == longest]
+        same = {names[i - 1] for i in best}
+        return best[0] if len(best) == 1 and len(same) == 1 else None
+
+    def _show_ahead(self, my, shot, plan, t0):
+        """Show the planned step at once, if exactly what it names is on the new screen."""
+        n = self._named(shot, plan["what"])
+        if not n or not is_action(plan["say"]):
+            return False
+        step = Step(self, my, shot, False, t0)
+        events = [Event("element", n), Event("what", plan["what"])]
+        events += [Event(k, plan[k]) for k in ("type", "key") if plan.get(k)]
+        events += [Event("say", plan["say"]), Event("wait", plan.get("wait", "click"))]
+        for ev in events:
+            step.on_event(ev)
+        if not step.alive() or not self.box:
+            return False
+        step.over = True
+        step.track()
+        self.watcher.rebase()
+        self._set_check(my, shot)
+        self.ui.log("debug", f"planned step shown in {time.time() - t0:.2f}s")
+        return True
 
     def _step_now(self):
         """The instruction on screen now (for the quick check)."""

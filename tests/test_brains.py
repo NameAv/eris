@@ -123,6 +123,24 @@ def test_unity_docs_search():
     check("Guide mode never uses the quick check", claude_brain().moved_on(fake_shot(), "x") is True)
 
 
+def test_planning_ahead():
+    config.BRAIN = "claude"
+    b = claude_brain()
+    reply = {"text": ""}
+    make = lambda **kw: CAP.clear() or CAP.update(kw) or types.SimpleNamespace(
+        content=[types.SimpleNamespace(type="text", text=reply["text"])])
+    b._get_client = lambda: types.SimpleNamespace(beta=types.SimpleNamespace(
+        messages=types.SimpleNamespace(create=make)))
+    reply["text"] = "NOBOX\nWHAT Add Component\nSAY Click Add Component.\nWAIT click"
+    plan = b.predict(fake_shot())
+    check("a planned step: its words, no position",
+          plan == {"what": "Add Component", "say": "Click Add Component.", "wait": "click"} and not b.history)
+    reply["text"] = "KEEP"
+    check("can't tell: no plan", b.predict(fake_shot()) is None)
+    reply["text"] = "BOX 1 2 3 4\nWHAT x\nSAY Click x.\nWAIT click"
+    check("a guessed position: no plan", b.predict(fake_shot()) is None)
+
+
 def test_prewarm():
     config.BRAIN = "claude"
     b = claude_brain()

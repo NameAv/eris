@@ -1,3 +1,4 @@
+v1.29.1: Instant boxes from your own words are now called Observation.
 v1.29.0: Speed and the right screen. She transcribes you while you're still talking (each pause is done in the background), so she starts sooner when you let go. Ask for one thing by name ("click Images") and its box shows instantly. Future sight now works after typing too (the next box shows as the results load). She looks at the window under your mouse when you ask (or the one you were last in) and sends just that window, so she's quicker and won't pick a Chrome window on your other monitor.
 v1.28.1: Planning the next step early is now called Future sight (Settings, then Guiding).
 v1.28.0: Faster still: a planned step's words are turned into speech ahead of time, so her voice starts the moment its box appears, and tasks you've done before show each step's box straight away from what worked last time (her normal look still checks every one).

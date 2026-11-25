@@ -47,7 +47,7 @@ After that, just open **Eris** from the Desktop. No command window.
   under the chat says which step you're on.
 - **She hears you while you talk.** Your words are turned into text at every pause as you
   speak, so when you let go only your last few words are left: she starts looking sooner.
-- **"Click Images" is instant.** Ask for one thing on screen by its name and its box shows
+- **Observation.** Ask for one thing on screen by its name ("click Images") and its box shows
   straight away; her normal look then checks it.
 - **She looks at your window.** She picks the window under your mouse when you ask (or the
   one you were last in) and sends just that window, not your whole screen: quicker, and she

@@ -549,8 +549,8 @@ class Eris:
                         r"(?:\s+please)?[.!?]*$", re.I)
 
     def _from_words(self, text, shot):
-        """You asked for exactly one thing on screen by its name ("click Images"): a plan
-        that boxes it at once (her look then checks it). None for anything else."""
+        """Observation: you asked for exactly one thing on screen by its name ("click
+        Images"), so it's boxed at once (her look then checks it). None for anything else."""
         if self.steps or not self.task or text != self.task["text"]:
             return None
         m = self._ASKED.match(text.strip())
@@ -562,6 +562,7 @@ class Eris:
         if len(same) != 1:
             return None
         name = same[0]["name"].strip()
+        self.ui.log("debug", f"observation: {name!r} is on screen")
         return {"what": name, "say": f"Click {name}.", "wait": "click"}
 
     def _step_now(self):

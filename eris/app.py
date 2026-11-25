@@ -18,7 +18,7 @@ if sys.platform == "win32":
 import customtkinter as ctk
 from pynput import keyboard, mouse
 
-from . import config, settings, updater
+from . import config, course, settings, updater
 from . import theme as T
 from .theme import font, tint_titlebar
 from .core import Eris
@@ -28,6 +28,9 @@ OVERLAY_CMDS = {"box", "move_box", "type_hint", "clear_box", "status", "monitor"
                 "scroll_hint", "badge"}
 SUGGESTIONS = ["How do I add a Rigidbody in Unity?", "Take me to Wikipedia",
                "Pick yourself a profile picture"]
+UNITY_SUGGESTIONS = ["What's the Inspector for?", "Why is my script not working?",
+                     "Explain what a prefab is"]
+MODE_ARGS = {"--unity": "unity", "--guide": "guide"}   # Eris Unity.bat starts her in teacher mode
 
 
 class Avatar(tk.Canvas):
@@ -86,9 +89,12 @@ class Avatar(tk.Canvas):
 class App(ctk.CTk):
     def __init__(self):
         settings.load()
+        for arg in sys.argv[1:]:
+            if arg in MODE_ARGS and config.MODE != MODE_ARGS[arg]:
+                config.MODE = MODE_ARGS[arg]
+                settings.save()
         ctk.set_appearance_mode("dark")
         super().__init__(fg_color=T.BG)
-        self.title("Eris")
         self.geometry("480x760")
         self.minsize(400, 560)
         self.attributes("-topmost", bool(config.PANEL_ON_TOP))
@@ -104,6 +110,7 @@ class App(ctk.CTk):
         self.overlay = Overlay(self)
         self._build()
         self.eris = Eris(self)
+        self._apply_mode()
         self._set_state("loading")
 
         keyboard.Listener(on_press=self.eris.on_press, on_release=self.eris.on_release).start()
@@ -221,8 +228,9 @@ class App(ctk.CTk):
         self.avatar = Avatar(top)
         self.avatar.pack(side="left")
         names = ctk.CTkFrame(top, fg_color="transparent")   # packed after the right side, below
-        ctk.CTkLabel(names, text="Eris", font=font(24, "bold"), text_color=T.TEXT,
-                     height=26).pack(anchor="w")
+        self.name_label = ctk.CTkLabel(names, text="Eris", font=font(24, "bold"), text_color=T.TEXT,
+                                       height=26)
+        self.name_label.pack(anchor="w")
         self.subtitle = ctk.CTkLabel(names, text="", font=font(12), text_color=T.MUTED, height=16)
         self.subtitle.pack(anchor="w")
         ctk.CTkButton(top, text="Settings", width=78, height=32, corner_radius=T.r(12), font=font(12),
@@ -244,7 +252,7 @@ class App(ctk.CTk):
         # thin red line
         ctk.CTkFrame(self, fg_color=T.ACCENT, height=2, corner_radius=T.r(1)).pack(fill="x", padx=18)
 
-        row = ctk.CTkFrame(self, fg_color="transparent")
+        row = self.switch_row = ctk.CTkFrame(self, fg_color="transparent")
         row.pack(fill="x", padx=18, pady=(10, 0))
         self.active_switch = ctk.CTkSwitch(
             row, text="Active", font=font(13), progress_color=T.ACCENT, button_color=T.TEXT,
@@ -255,6 +263,7 @@ class App(ctk.CTk):
         self.hint = ctk.CTkLabel(row, text="", text_color=T.MUTED, font=font(12))
         self.hint.pack(side="right")
         self._update_hint()
+        self._lesson_bar()
 
         # chat
         self.chat = ctk.CTkScrollableFrame(self, fg_color=T.CARD, corner_radius=T.r(18),
@@ -329,15 +338,78 @@ class App(ctk.CTk):
         name = config.USER_NAME.strip()
         ctk.CTkLabel(words, text=f"Hi {name}, I'm Eris" if name else "Hi, I'm Eris",
                      font=font(19, "bold"), text_color=T.TEXT, anchor="w").pack(fill="x")
+        unity = config.MODE == "unity"
         self.welcome_label = ctk.CTkLabel(
-            words, text="Ask me how to do anything. I'll point at it on your screen, one step "
+            words, text="Let's make your game. Start the lesson above and I'll teach you each "
+                        "step; you do all the making." if unity else
+                        "Ask me how to do anything. I'll point at it on your screen, one step "
                         "at a time.", font=font(13), text_color=T.MUTED, wraplength=300,
             justify="left", anchor="w")
         self.welcome_label.pack(fill="x")
         ctk.CTkLabel(box, text="TRY ASKING", font=font(10, "bold"), text_color=T.ACCENT,
                      anchor="w").pack(fill="x", pady=(16, 4))
-        for text in SUGGESTIONS:
+        for text in UNITY_SUGGESTIONS if unity else SUGGESTIONS:
             self._suggestion(box, text)
+
+    # ---------- Eris Unity ----------
+    def _lesson_bar(self):
+        """Eris Unity: the lesson you're on, with Start, Stuck and Done. Hidden in Guide mode."""
+        bar = self.lesson = ctk.CTkFrame(self, fg_color=T.CARD, corner_radius=T.r(14))
+        words = ctk.CTkFrame(bar, fg_color="transparent")
+        words.pack(side="left", fill="x", expand=True, padx=14, pady=8)
+        self.lesson_tag = ctk.CTkLabel(words, text="", font=font(10, "bold"), text_color=T.ACCENT,
+                                       anchor="w", height=14)
+        self.lesson_tag.pack(fill="x")
+        self.lesson_title = ctk.CTkLabel(words, text="", font=font(14, "bold"), text_color=T.TEXT,
+                                         anchor="w", height=20)
+        self.lesson_title.pack(fill="x")
+        self.lesson_btns = {}
+        for text, fn, primary in (("Done", self._lesson_done, False),
+                                  ("Stuck", lambda: self.eris.stuck(), False),
+                                  ("Start", self._lesson_start, True)):
+            b = ctk.CTkButton(bar, text=text, width=58, height=30, corner_radius=T.r(15), font=font(12, "bold"),
+                              fg_color=T.ACCENT if primary else "transparent", border_width=0 if primary else 1,
+                              border_color=T.BORDER, hover_color=T.ACCENT_HOVER if primary else T.CARD_2,
+                              text_color=T.TEXT, command=fn)
+            b.pack(side="right", padx=(0, 8))
+            self.lesson_btns[text] = b
+
+    def refresh_lesson(self):
+        lesson = course.current()
+        if lesson is None:
+            self.lesson_tag.configure(text="COURSE COMPLETE")
+            self.lesson_title.configure(text="You made a game. Ask me anything.")
+        else:
+            self.lesson_tag.configure(text=f"LESSON {course.number(lesson)} OF {len(course.LESSONS)}"
+                                           f"  ·  {lesson.part.upper()}")
+            self.lesson_title.configure(text=lesson.title)
+        for name in ("Start", "Done"):
+            self.lesson_btns[name].configure(state="normal" if lesson else "disabled")
+
+    def _lesson_start(self):
+        lesson = course.current()
+        if lesson:
+            self.eris.start_lesson(lesson)
+
+    def _lesson_done(self):
+        lesson = course.current()
+        if not lesson:
+            return
+        course.complete(lesson)
+        self.eris.cancel()
+        self._note(f"Lesson {course.number(lesson)} done: {lesson.title}. Nice work.", hold=5)
+        self.refresh_lesson()
+
+    def _apply_mode(self):
+        """Guide or Eris Unity: the title, the lesson bar and the welcome follow the mode."""
+        unity = config.MODE == "unity"
+        self.title("Eris Unity" if unity else "Eris")
+        self.name_label.configure(text=self.title())
+        if unity:
+            self.refresh_lesson()
+            self.lesson.pack(fill="x", padx=18, pady=(10, 0), after=self.switch_row)
+        else:
+            self.lesson.pack_forget()
 
     def _suggestion(self, parent, text):
         row = ctk.CTkFrame(parent, fg_color=T.CARD_2, corner_radius=T.r(12), height=38)
@@ -627,6 +699,10 @@ class App(ctk.CTk):
             if config.BRAIN == "local":
                 self.eris.brain.last_call = 0      # a new model: load it now
                 threading.Thread(target=self.load_local_brain, daemon=True).start()
+        if "MODE" in keys:
+            self.eris.new_task()            # a fresh chat, with the welcome for this mode
+            self._apply_mode()
+            self._set_state("ready")
         if "WHISPER_MODEL" in keys:
             self.eris.load_ears()
         if keys & {"VOICE_NAME", "VOICE_ENGINE"}:

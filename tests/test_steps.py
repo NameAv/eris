@@ -400,6 +400,45 @@ def test_preshot_only_for_its_question():
     check("and never reused for a later step", e._take_shot() not in (own, made[1]))
 
 
+def test_eris_unity():
+    from eris import brain, config, course
+    from eris.protocol import parse_line
+    course.forget()
+    config.MODE = "unity"
+    try:
+        e, ui, _ = make_eris()
+        check("a WHY line is read", parse_line("WHY It keeps speed steady.").kind == "why")
+        first = course.current()
+        e.brain.script = ["BOX 100 100 200 130\nSAY Click the Scene tab.\n"
+                          "WHY The Scene view is where you build your world.\nWAIT click"]
+        e.start_lesson(first)
+        wait_for(lambda: e.waiting == "click")
+        check("a lesson starts from its goal", first.title in e.brain.asked[0] and "Teach me lesson 1" in e.brain.asked[0])
+        check("the why is read out after the instruction",
+              e.voice.said == ["Click the Scene tab.", "The Scene view is where you build your world."], e.voice.said)
+        for level in (1, 2, 3, 3):
+            e.brain.script = ["BOX 100 100 200 130\nSAY Look at the top left.\nWAIT click"]
+            e.stuck()
+            wait_for(lambda: e.waiting == "click" and not e.busy)
+        check("each Stuck asks for a bigger hint, up to 3",
+              [a for a in e.brain.asked if "hint level" in a][-2:] == [brain_hint(3)] * 2)
+        check("a lesson gets more steps than a quick task", e._scale() == 3)
+        course.complete(first)
+        check("finishing a lesson moves you on", course.current() == course.LESSONS[1] and course.done() == [first.id])
+        check("the teacher rules and the course go to the AI",
+              "Never write their game for them" in brain.teacher_text() and "1 of 20" in brain.teacher_text())
+        config.MODE = "guide"
+        check("...but not in Guide mode", brain.teacher_text() == "")
+    finally:
+        config.MODE = "guide"
+        course.forget()
+
+
+def brain_hint(level):
+    from eris.core import STUCK_PROMPT
+    return STUCK_PROMPT.format(level=level)
+
+
 for name, fn in list(globals().items()):
     if name.startswith("test_"):
         fn()

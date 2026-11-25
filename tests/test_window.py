@@ -159,6 +159,32 @@ def new_task():
     app._settings.geometry("800x620+500+40")
 
 
+@step(400)
+def unity_mode():
+    from eris import course
+    check("Guide mode: no lesson bar", not app.lesson.winfo_ismapped() and app.title() == "Eris")
+    app._settings.set(MODE="unity")
+    app.geometry("400x760")
+    app.update()
+    check("Eris Unity: the lesson bar shows the first lesson",
+          app.lesson.winfo_ismapped() and app.title() == "Eris Unity"
+          and app.lesson_title.cget("text") == course.LESSONS[0].title)
+    check("...and its buttons fit a narrow window", all(
+        b.winfo_rootx() + b.winfo_width() <= app.winfo_rootx() + app.winfo_width() for b in app.lesson_btns.values()))
+    check("...and the welcome is about making your game", "make your game" in app.welcome_label.cget("text"))
+    if os.environ.get("ERIS_SHOT"):
+        app.update()
+        from PIL import ImageGrab
+        ImageGrab.grab((app.winfo_rootx(), app.winfo_rooty(), app.winfo_rootx() + app.winfo_width(),
+                        app.winfo_rooty() + app.winfo_height())).save(os.environ["ERIS_SHOT"])
+    app._lesson_done()
+    check("Done moves to the next lesson", app.lesson_title.cget("text") == course.LESSONS[1].title)
+    course.forget()
+    app._settings.set(MODE="guide")
+    app.geometry("480x760")
+    check("back in Guide mode the lesson bar goes", not app.lesson.winfo_ismapped() and app.title() == "Eris")
+
+
 @step(500)
 def settings_pages():
     w = app._settings

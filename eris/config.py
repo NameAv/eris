@@ -66,8 +66,12 @@ UPDATE_REPO = "nameAv/eris"
 UPDATE_BRANCH = "main"
 UPDATES = "ask"         # "ask": check on startup and show the Update button. "off": only when you check
 
+# --- Mode ---
+MODE = "guide"          # "guide" (Eris: help with anything) or "unity" (Eris Unity: teaches you
+                        # to make your own game in Unity, and never makes it for you)
+
 # --- Eris herself ---
 VIBE = "friendly"       # "calm", "friendly" or "cheeky"
 USER_NAME = ""          # what she calls you
 
-MAX_STEPS = 20          # safety limit per task
+MAX_STEPS = 20          # safety limit per task (a lesson in Eris Unity gets three times this)

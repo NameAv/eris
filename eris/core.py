@@ -11,7 +11,7 @@ import traceback
 
 from pynput import keyboard
 
-from . import apps, config, elements, experience, ocr, privacy, recipes, screen, settings, snap
+from . import apps, config, course, elements, experience, ocr, privacy, recipes, screen, settings, snap
 from .brain import Brain, locate
 from .speech import Voice, beep
 from .tracker import Tracker
@@ -43,6 +43,8 @@ def is_action(line):
 WRONG_BOX_PROMPT = ("That box was on the wrong thing. Here's my screen again. Look carefully, "
                     "point at the right one and say what it is (so I can tell it's the one).")
 KEEP_MISTAKES = 30           # "Wrong box" screenshots kept for the test lab (oldest go first)
+STUCK_PROMPT = ("I'm stuck on this step. Here's my screen. Give me hint level {level} of 3 "
+                "(see the teacher rules). Don't do it for me.")
 NEXT_STEP_PROMPT = ("I did that step. Here's my screen now. Check it worked, then give the "
                     "next step, or DONE if the task is finished. If the screen is still loading, "
                     "reply with just KEEP and you'll get another look when it changes.")
@@ -65,6 +67,7 @@ class Eris:
         self.pending_note = ""  # what that check found, for the next look
         self.last_key = 0.0     # when you last pressed a key (not which key)
         self.last_what = ""     # what the box on screen points at (for lessons)
+        self.hint_level = 0     # Eris Unity: how much help you've asked for on this step
         self.waiting = None     # None | "click" | "next"
         self.steps = 0
         self.talking = False
@@ -153,8 +156,36 @@ class Eris:
         self.task = {"text": text, "app": None, "steps": [], "wrong": False, "recipe": None,
                      "learned": "", "plan": [], "wrong_what": None}
         self.check, self.retried, self.pending_note = None, False, ""
+        self.hint_level = 0
         my = self._new_gen()
         threading.Thread(target=self._turn_safe, args=(my, text, False, True), daemon=True).start()
+
+    @staticmethod
+    def _scale():
+        """A lesson in Eris Unity is a long task: it gets more steps and looks."""
+        return 3 if config.MODE == "unity" else 1
+
+    def start_lesson(self, lesson):
+        """Eris Unity: teach this lesson, starting from what's on screen."""
+        self.new_task()
+        self.ui.log("info", f"Lesson {course.number(lesson)}: {lesson.title}")
+        self.ask(course.task(lesson))
+
+    def stuck(self):
+        """Eris Unity: you asked for more help with this step (up to 3 hints, each bigger)."""
+        if not self.active:
+            return
+        if self.task is None:
+            self.ui.log("hint", "Start a lesson or ask me something first, then press Stuck.")
+            return
+        self.hint_level = min(3, self.hint_level + 1)
+        self.ui.log("you", f"I'm stuck (hint {self.hint_level} of 3)")
+        self.voice.stop()
+        self._clear()
+        self.auto_looks = 0
+        my = self._new_gen()
+        threading.Thread(target=self._turn_safe, args=(my, STUCK_PROMPT.format(level=self.hint_level)),
+                         daemon=True).start()
 
     def advance(self, clicked=False):
         """Step finished (click in box or Next): box goes away NOW, then a quick free check
@@ -171,7 +202,8 @@ class Eris:
         self.steps += 1
         self.auto_looks = 0
         my = self._new_gen()
-        if self.steps >= config.MAX_STEPS:
+        self.hint_level = 0
+        if self.steps >= config.MAX_STEPS * self._scale():
             msg = "That's a lot of steps, let's pause here. Ask me again if you're stuck."
             self.ui.log("eris", msg)
             self.voice.say(msg)
@@ -323,7 +355,7 @@ class Eris:
         """Called by the watcher when the screen changed while waiting."""
         if not (self.active and self.waiting) or self.busy:
             return
-        if self.task_looks >= MAX_LOOKS_PER_TASK:
+        if self.task_looks >= MAX_LOOKS_PER_TASK * self._scale():
             return
         self.auto_looks += 1
         self.task_looks += 1
@@ -922,6 +954,13 @@ class Step:
 
     def on_plan(self, text):
         self.e._set_plan(text)
+
+    def on_why(self, text):
+        """Eris Unity: why the step works. Shown, and read out after the instruction."""
+        e = self.e
+        e.ui.log("hint", f"Why:  {text}")
+        if config.MODE == "unity" and self.instructed:
+            e.voice.say(text)
 
     def on_keep(self, _):   # KEEP after other lines: wait for you to press Next
         self.on_wait("next")

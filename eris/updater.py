@@ -66,7 +66,7 @@ def _hash(p: Path):
 
 # Only these files may ever be written by an update, and only inside Eris's folder.
 ALLOWED_TOP = {"VERSION", "CHANGES.txt", "README.md", "LICENSE", ".gitignore", "install.bat",
-               "Eris.bat", "requirements.txt", "requirements-nodeps.txt", "requirements.lock",
+               "Eris.bat", "Eris Unity.bat", "requirements.txt", "requirements-nodeps.txt", "requirements.lock",
                "requirements-nodeps.lock"}
 MAX_DOWNLOAD = 20 * 1024 * 1024
 

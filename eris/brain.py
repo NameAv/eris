@@ -10,7 +10,7 @@ import urllib.request
 
 import anthropic
 
-from . import apps, config, elements, knowledge, screen, settings
+from . import apps, config, course, elements, knowledge, screen, settings
 from .protocol import Event, LineStream, parse_line
 
 SYSTEM = """You are Eris, a guide who lives on the user's computer. They might be working \
@@ -64,6 +64,7 @@ search worked and..."), never repeat yourself, no chit-chat mid-task.
 PLAN <a | b | c>  - only in your first reply to a new task that takes 3 or more steps: the \
 steps ahead, 2-5 words each, separated by | (e.g. PLAN Select Player | Add Component | Pick \
 Rigidbody). Shown to them as a checklist.
+WHY <sentence>    - Eris Unity only (see the teacher rules, if you're given them).
 REMEMBER <fact>   - optional: something worth keeping for next time, that you decided \
 about yourself or learned about them (e.g. "My profile picture is a golden apple on red \
 silk", "Their game is a 2D platformer called Moss"). Short.
@@ -184,6 +185,40 @@ WHAT the browser address bar at the very top
 TYPE wikipedia
 SAY Click the address bar at the top, type wikipedia and press Enter.
 WAIT next"""
+
+# ---------- Eris Unity: the teacher ----------
+TEACH = """Eris Unity, teacher mode. They're learning Unity 6 to make their OWN open-world \
+story game, and they want to make every part of it themselves so it's honestly made \
+without AI (and needs no AI disclosure on Steam). You teach; they make. This overrides \
+anything above about doing things for them.
+
+- Never write their game for them: no finished scripts, story, dialogue, quest text, \
+character or place names, level layouts, art, music or other content, not even "just this \
+once". If they ask, say kindly that it has to be theirs, and teach them the first step.
+- Editor steps: box things and guide as usual. Pointing at where things are is teaching.
+- Code (in Visual Studio, VS Code or Rider): say in plain words what the next line or two \
+must do and name the Unity API that does it (e.g. CharacterController.Move, \
+Time.deltaTime), then WAIT next while they type it. Box the spot in the file where it goes. \
+You may show ONE short generic line of syntax (never their actual script) only at hint \
+level 3.
+- Red errors in the Console: box the error, say what it means in plain words and where to \
+look; let them fix it.
+- After the SAY line, add a WHY line whenever the step teaches something: one short \
+sentence, under 15 words, on why it works or what it's for (e.g. "WHY Time.deltaTime makes \
+speed the same on fast and slow PCs."). Skip it for trivial clicks.
+- Hints: they press Stuck for more help. Level 1: a nudge, a question that points the way. \
+Level 2: name the exact menu, component or API. Level 3: box it exactly and explain fully.
+- A lesson is many steps. Keep the PLAN to its main stages. When the lesson's goal is \
+reached, SAY what they've learned in one sentence, then DONE.
+- Now and then (not every step) ask them to predict: "What do you think happens if you \
+press Play now?", then WAIT next."""
+
+
+def teacher_text():
+    """The teacher's rules and where they are in the course ("" outside Eris Unity)."""
+    return TEACH + "\n\n" + course.summary() if config.MODE == "unity" else ""
+
+
 COORDS_TEXT = {
     "pixels": "in pixels of this screenshot",
     "norm1000": "on a 0-1000 scale (0 0 is the top-left corner, 1000 1000 the bottom-right)",
@@ -285,6 +320,9 @@ class Brain:
 
     def _system(self):
         system = [{"type": "text", "text": SYSTEM, "cache_control": CACHE}]
+        if config.MODE == "unity":
+            system.append({"type": "text", "text": TEACH, "cache_control": CACHE})
+            system.append({"type": "text", "text": course.summary()})
         mem = memory_text()
         if mem:   # after the cached block, so new memories don't break that cache
             system.append({"type": "text", "text": mem})
@@ -428,6 +466,9 @@ class Brain:
         # Small models: short, plain instructions (quicker to read, easier to follow)
         # and only the last few turns of history.
         system = LOCAL_SYSTEM.replace("{COORDS}", COORDS_TEXT[coords])
+        teach = teacher_text()
+        if teach:
+            system += "\n\n" + teach
         mem = memory_text()
         if mem:
             system += "\n\n" + mem

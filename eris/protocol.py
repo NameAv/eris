@@ -9,6 +9,7 @@ The AI is told to answer in this shape (one thing per line):
     TO ELEMENT n  or  TO x1 y1 x2 y2           <- a drag: where to drop the boxed thing
     SCROLL down | up | left | right            <- what they need is scrolled out of view
     SAY one short sentence                     <- spoken the moment each line arrives
+    WHY why it works                           <- Eris Unity: the lesson in the step
     REMEMBER a fact about you                  <- saved to her memory
     PLAN step | step | step                    <- first reply of a task: the steps ahead
     WAIT click | WAIT next | DONE              <- how this step ends
@@ -25,7 +26,7 @@ class Event:
 
 
 BARE = {"NOBOX", "DONE", "KEEP", "AVATAR", "NONE"}       # just the word
-WORDS = {"SAY", "WHAT", "REMEMBER", "TYPE", "PLAN"}     # the word and some text
+WORDS = {"SAY", "WHY", "WHAT", "REMEMBER", "TYPE", "PLAN"}     # the word and some text
 
 
 def _box(rest):

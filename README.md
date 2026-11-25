@@ -63,6 +63,28 @@ After that, just open **Eris** from the Desktop. No command window.
   shortcuts, scrolling) is the same solid red plate, and drags get a HUD line to an arrowhead.
   If the box ever misbehaves, Settings, then Guiding, has a plain *Simple* box.
 
+## Eris Unity (teacher mode)
+
+Eris Unity teaches you to make your own open-world story game in Unity, one step at a time,
+and never makes it for you. Every script, line of story, quest and level is yours.
+
+- **Start it:** double-click **Eris Unity.bat** in the Eris folder, or in Settings, then Eris,
+  set *Mode* to *Unity teacher* (*Guide* switches back). She remembers the mode.
+- **Lessons:** 20 lessons, from finding your way around the editor to building for Steam:
+  terrain, walking with your first script, a third-person camera, day and night, dialogue,
+  quests, inventory, NPCs that walk around, animation, sound, saving, menus and performance.
+  The bar at the top shows your lesson. Click **Start** and she teaches it from whatever is on
+  your screen, then click **Done** when you've finished it.
+- **She teaches, you make.** In the editor she boxes where things are, as usual. For code she
+  says what the next line must do and names the Unity function for it, and you type it. Red
+  Console errors get explained in plain words, and you fix them. After a step she often adds a
+  short *why* (shown in the chat, read out after the instruction).
+- **Stuck?** Each press of **Stuck** gives a bigger hint: a nudge, then the exact menu or
+  function, then she points at it and explains it fully.
+- **Steam:** Valve's AI disclosure covers AI-made content that ships in your game, not tools
+  that helped you learn or code. As everything in the game is made by you, the disclosure
+  questions are a no. (Check Steamworks' current wording when you get there.)
+
 ## Privacy
 
 - While you type into a password, email, card or code box, Eris takes **no screenshots**.
@@ -191,7 +213,7 @@ If it can't connect, Eris switches to the built-in Windows voice by herself. Use
 - `eris/brain.py`: the prompt, plus the Claude and local (Ollama) brains
 - `eris/protocol.py`: parses her reply lines (`ELEMENT / BOX / SAY / WAIT ...`) as they stream in
 - `eris/privacy.py`: looking away from and blacking out private fields
-- `eris/glowbox.py`: the rounded, glowing box
+- `eris/glowbox.py`: draws the HUD box, drag line and notes on screen
 - `eris/apps.py`: which app is in front
 - `eris/ocr.py`: Windows' built-in text reader, for apps without a button list
 - `eris/bench.py`: the test lab
@@ -203,6 +225,7 @@ If it can't connect, Eris switches to the built-in Windows voice by herself. Use
 - `eris/recipes.py`: remembers the steps of tasks that went well
 - `eris/experience.py`: lessons from corrected mistakes, and which apps you know well
 - `eris/knowledge.py`: a little know-how about popular apps
+- `eris/course.py`: Eris Unity's lessons and your progress through them
 - `eris/glitch.py`: the Neon look's drifting, glitching banner
 - `eris/hud.py`: the Neon HUD box shapes, drag connector and notes
 - `eris/overlay.py`: the red box (four solid bars plus the in-box type hint)

@@ -595,6 +595,16 @@ class SettingsWindow(ctk.CTkToplevel):
         tick(3)
 
     def _page_eris(self):
+        c = self.card("Mode")
+        right = self.row(c, "What she does", "Guide: helps with anything, step by step. Unity "
+                         "teacher (Eris Unity): teaches you to make your own game, and never makes "
+                         "it for you.")
+        self.seg(right, ["Guide", "Unity teacher"], "Unity teacher" if config.MODE == "unity" else "Guide",
+                 lambda v: self.set(MODE="unity" if v == "Unity teacher" else "guide"), width=260)
+        if config.MODE == "unity":
+            from . import course
+            self.muted(c, f"Course: {len(course.done())} of {len(course.LESSONS)} lessons finished.")
+            self.button(c, "Start the course again", self._restart_course).pack(anchor="w", pady=(8, 0))
         c = self.card("Look")
         self.switch(c, "Glitch effects", "The streaks across the top glitch now and then, and when she "
                     "starts listening or guiding.", "GLITCH")
@@ -660,6 +670,13 @@ class SettingsWindow(ctk.CTkToplevel):
             self.toast("✓ She forgot what she learned")
             self.show("eris")
         self.button(c, "Forget what she's learned", forget).pack(anchor="w", pady=(10, 0))
+
+    def _restart_course(self):
+        from . import course
+        course.forget()
+        self.app.refresh_lesson()
+        self.toast("✓ Back to lesson 1")
+        self.show("eris")
 
     def _remove_avatar(self):
         try:

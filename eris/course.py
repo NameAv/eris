@@ -123,11 +123,49 @@ def number(lesson):
     return LESSONS.index(lesson) + 1
 
 
+KEEP_FACTS = 40
+KEEP_NOTES = 30     # per lesson
+
+
+def _save(data):
+    file().parent.mkdir(parents=True, exist_ok=True)
+    file().write_text(json.dumps(data, indent=1), encoding="utf-8")
+
+
 def complete(lesson):
     data = _load()
     data["done"] = [i for i in done() if i != lesson.id] + [lesson.id]
-    file().parent.mkdir(parents=True, exist_ok=True)
-    file().write_text(json.dumps(data, indent=1), encoding="utf-8")
+    _save(data)
+
+
+def remember(fact):
+    """Something lasting they made in their game ("Player has PlayerMovement.cs")."""
+    fact = fact.strip()
+    data = _load()
+    facts = [f for f in data.get("project", []) if f.lower() != fact.lower()]
+    data["project"] = (facts + [fact])[-KEEP_FACTS:]
+    _save(data)
+
+
+def facts():
+    return list(_load().get("project", []))
+
+
+def note(lesson, why):
+    """Keep one of her "why"s in your notebook, under its lesson."""
+    why = why.strip()
+    data = _load()
+    notes = data.setdefault("notes", {}).setdefault(lesson.id, [])
+    if why and why not in notes:
+        notes.append(why)
+        del notes[:-KEEP_NOTES]
+        _save(data)
+
+
+def notebook():
+    """[(lesson, [why, ...])] for the lessons with notes, in course order."""
+    notes = _load().get("notes", {})
+    return [(lesson, notes[lesson.id]) for lesson in LESSONS if notes.get(lesson.id)]
 
 
 def forget():
@@ -145,10 +183,15 @@ def task(lesson):
 
 
 def summary():
-    """For the AI: where you are in the course."""
+    """For the AI: where you are in the course, and what's in their game so far."""
     lesson = current()
     finished = len(done())
     if lesson is None:
-        return f"Course: they've finished all {len(LESSONS)} lessons."
-    return (f"Course: {finished} of {len(LESSONS)} lessons finished; next is lesson "
-            f"{number(lesson)}, {lesson.title}.")
+        text = f"Course: they've finished all {len(LESSONS)} lessons."
+    else:
+        text = (f"Course: {finished} of {len(LESSONS)} lessons finished; next is lesson "
+                f"{number(lesson)}, {lesson.title}.")
+    made = facts()
+    if made:
+        text += "\nWhat they've made in their game so far:\n" + "\n".join(f"- {f}" for f in made)
+    return text

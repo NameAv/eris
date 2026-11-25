@@ -11,7 +11,7 @@ import traceback
 
 from pynput import keyboard
 
-from . import apps, config, course, elements, experience, ocr, privacy, recipes, screen, settings, snap, unity_book
+from . import apps, config, course, elements, experience, ocr, privacy, recipes, screen, settings, snap, unity_book, unity_project
 from .brain import Brain, locate
 from .speech import Voice, beep
 from .tracker import Tracker
@@ -432,7 +432,10 @@ class Eris:
         self.ui.cmd("monitor", *self.mon)
         if soft:
             self.ui.cmd("status", "Checking...")
-        self.brain.turn(shot, text, step.on_event, step.alive, self._notes(shot))
+        if soft and not self.brain.moved_on(shot, self._step_now()):
+            step.kept = True       # still working on it: no need for the full brain
+        else:
+            self.brain.turn(shot, text, step.on_event, step.alive, self._notes(shot))
         step.times["done"] = time.time() - t0
         step.over = True
         step.finish_talking()
@@ -463,6 +466,11 @@ class Eris:
                 self.ui.log("info", "I'm watching your screen and will notice when you're done "
                                     f"(or press {config.NEXT_KEY.upper()}).")
 
+    def _step_now(self):
+        """The instruction on screen now (for the quick check)."""
+        t = self.task
+        return t["steps"][-1] if t and t["steps"] else self.last_what
+
     def _notes(self, shot):
         """Extra context for this look: a recipe that worked before, what the last step changed."""
         notes = []
@@ -486,6 +494,10 @@ class Eris:
                 notes.append(t["learned"])
             if t["book"]:
                 notes.append(t["book"])
+        if config.MODE == "unity":         # their project: scripts, the open script, errors
+            project = unity_project.notes(getattr(shot, "app", None))
+            if project:
+                notes.append(project)
         if self.pending_note:
             notes.append(self.pending_note)
             self.pending_note = ""
@@ -898,6 +910,12 @@ class Step:
     def on_avatar(self, _):
         self.avatar = True
 
+    def on_project(self, fact):
+        """Eris Unity: something lasting they made, kept so later lessons build on it."""
+        if config.MODE == "unity":
+            course.remember(fact)
+            self.e.ui.log("debug", f"project note: {fact}")
+
     def on_remember(self, fact):
         settings.remember(fact)
         self.e.ui.log("info", f"Eris will remember: {fact}")
@@ -972,9 +990,14 @@ class Step:
         self.e._set_plan(text)
 
     def on_why(self, text):
-        """Eris Unity: why the step works. Shown, and read out after the instruction."""
+        """Eris Unity: why the step works. Shown, kept in your notebook, and read out after
+        the instruction."""
         e = self.e
         e.ui.log("hint", f"Why:  {text}")
+        lesson = (e.task or {}).get("lesson") or course.current()
+        if config.MODE == "unity" and lesson:
+            course.note(lesson, text)
+            e.ui.cmd("lesson")             # the lesson bar shows NOTES once there are some
         if config.MODE == "unity" and self.instructed:
             e.voice.say(text)
 

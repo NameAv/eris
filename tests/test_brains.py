@@ -102,11 +102,25 @@ def test_unity_docs_search():
         check("if the API refuses the docs search, she answers without it",
               len(tries) == 2 and "tools" not in tries[1] and "say" in said and "fail" not in said)
         b._get_client = lambda: fake_client()
+        answer = {"text": "KEEP"}
+        quick = types.SimpleNamespace(create=lambda **kw: CAP.clear() or CAP.update(kw) or types.SimpleNamespace(
+            content=[types.SimpleNamespace(type="text", text=answer["text"])]))
+        b._get_client = lambda: types.SimpleNamespace(messages=quick)
+        check("quick check: KEEP means the full brain isn't needed",
+              b.moved_on(fake_shot(), "Type the next line.") is False and CAP["model"] == config.CHEAP_MODEL
+              and CAP["max_tokens"] <= 16)
+        answer["text"] = "MOVED"
+        check("...MOVED means it is", b.moved_on(fake_shot(), "Type the next line.") is True)
+        b._get_client = lambda: types.SimpleNamespace(messages=types.SimpleNamespace(
+            create=lambda **kw: (_ for _ in ()).throw(RuntimeError("down"))))
+        check("...and any problem means the full brain looks", b.moved_on(fake_shot(), "x") is True)
+        b._get_client = lambda: fake_client()
         config.BRAIN = "claude-cheap"
         b.turn(fake_shot(), "hi", lambda e: None, lambda: True)
         check("no docs search on the Cheap brain", "tools" not in CAP)
     finally:
         config.BRAIN, config.MODE = "claude", "guide"
+    check("Guide mode never uses the quick check", claude_brain().moved_on(fake_shot(), "x") is True)
 
 
 def test_prewarm():

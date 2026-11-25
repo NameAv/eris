@@ -65,6 +65,7 @@ PLAN <a | b | c>  - only in your first reply to a new task that takes 3 or more 
 steps ahead, 2-5 words each, separated by | (e.g. PLAN Select Player | Add Component | Pick \
 Rigidbody). Shown to them as a checklist.
 WHY <sentence>    - Eris Unity only (see the teacher rules, if you're given them).
+PROJECT <fact>    - Eris Unity only (see the teacher rules).
 REMEMBER <fact>   - optional: something worth keeping for next time, that you decided \
 about yourself or learned about them (e.g. "My profile picture is a golden apple on red \
 silk", "Their game is a 2D platformer called Moss"). Short.
@@ -144,6 +145,12 @@ TYPE wikipedia
 SAY Click the address bar at the very top, type wikipedia and press Enter.
 WAIT next"""
 
+QUICK_SYSTEM = """You glance at a learner's screen while they work on one step of a Unity \
+lesson. Reply with ONE word. KEEP: they haven't finished the step yet (still typing, \
+partway through, loading) or nothing important changed. MOVED: the step is done, \
+something went wrong (a red error, the wrong window, a dialog), or anything else that \
+needs their teacher. When unsure, MOVED."""
+
 LOCATE_SYSTEM = """You find one element in a zoomed-in part of a screenshot. Reply with \
 ONLY one line: BOX x1 y1 x2 y2 - {COORDS}, tight around exactly that element (the \
 button, link text, text field or image itself, nothing around it). If it isn't in this \
@@ -210,8 +217,15 @@ must do and name the Unity API that does it (e.g. CharacterController.Move, \
 Time.deltaTime), then WAIT next while they type it. Box the spot in the file where it goes. \
 You may show ONE short generic line of syntax (never their actual script) only at hint \
 level 3.
-- Red errors in the Console: box the error, say what it means in plain words and where to \
-look; let them fix it.
+- Their project: you may get its scripts and scenes, the script open in their code editor \
+(numbered lines, as saved) and the newest errors from Unity's log with the lines they point \
+at. Use them to be exact: name the line number and what's wrong on it. Read only: never \
+write their fix for them.
+- Red errors in the Console: box the error, say what it means in plain words and which line \
+to look at; let them fix it.
+- When they finish making something that lasts (a script, a scene, a prefab, a key \
+setting), add a PROJECT line so later lessons can build on it, e.g. "PROJECT Player has \
+PlayerMovement.cs: WASD walking with a CharacterController". Short, one per thing.
 - After the SAY line, add a WHY line whenever the step teaches something: one short \
 sentence, under 15 words, on why it works or what it's for (e.g. "WHY Time.deltaTime makes \
 speed the same on fast and slow PCs."). Skip it for trivial clicks.
@@ -381,6 +395,31 @@ class Brain:
                        output_config={"effort": config.EFFORT}, **no_thinking(), **self._tools())
         except Exception as e:
             self.log("debug", f"prewarm skipped: {e}")
+
+    def moved_on(self, shot, step):
+        """Eris Unity on Opus: a quick, very cheap Haiku look at an automatic check. False =
+        they're still on the step, so the full brain isn't needed. Any doubt or problem
+        = True (the full brain looks)."""
+        if config.MODE != "unity" or config.BRAIN != "claude" or not step:
+            return True
+        client = self._get_client()
+        if not client:
+            return True
+        t0 = time.time()
+        try:
+            reply = client.messages.create(
+                model=config.CHEAP_MODEL, max_tokens=16, system=QUICK_SYSTEM,
+                thinking={"type": "disabled"}, output_config={"effort": "low"},
+                messages=[{"role": "user", "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                                 "data": shot.b64}},
+                    {"type": "text", "text": f"The step they were given: {step}"}]}])
+            word = "".join(b.text for b in reply.content if b.type == "text").strip().upper()
+        except Exception as e:
+            self.log("debug", f"quick check skipped: {e}")
+            return True
+        self.log("debug", f"quick check: {word or '?'} ({time.time() - t0:.2f}s)")
+        return not word.startswith("KEEP")
 
     @staticmethod
     def shot_width():

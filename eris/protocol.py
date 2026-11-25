@@ -10,6 +10,7 @@ The AI is told to answer in this shape (one thing per line):
     SCROLL down | up | left | right            <- what they need is scrolled out of view
     SAY one short sentence                     <- spoken the moment each line arrives
     WHY why it works                           <- Eris Unity: the lesson in the step
+    PROJECT something they made                <- Eris Unity: kept about their game
     REMEMBER a fact about you                  <- saved to her memory
     PLAN step | step | step                    <- first reply of a task: the steps ahead
     WAIT click | WAIT next | DONE              <- how this step ends
@@ -26,7 +27,7 @@ class Event:
 
 
 BARE = {"NOBOX", "DONE", "KEEP", "AVATAR", "NONE"}       # just the word
-WORDS = {"SAY", "WHY", "WHAT", "REMEMBER", "TYPE", "PLAN"}     # the word and some text
+WORDS = {"SAY", "WHY", "WHAT", "REMEMBER", "PROJECT", "TYPE", "PLAN"}     # the word and some text
 
 
 def _box(rest):

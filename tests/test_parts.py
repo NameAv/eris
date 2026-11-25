@@ -582,6 +582,45 @@ def test_hearing():
     check("on a call she never hears herself, only you", heard == ["words"], heard)
 
 
+def test_unity_project():
+    import tempfile
+    from pathlib import Path
+    from eris import unity_project as up
+    root = Path(tempfile.mkdtemp()) / "MyGame"
+    (root / "Assets" / "Scripts").mkdir(parents=True)
+    (root / "Assets" / "Scenes").mkdir()
+    (root / "Logs").mkdir()
+    (root / "Assets" / "Scenes" / "World.unity").write_text("x")
+    (root / "Assets" / "Scripts" / "Player.cs").write_text(
+        "using UnityEngine;\npublic class Player : MonoBehaviour\n{\n    float speed = 5f\n    void Update() { }\n}\n")
+    (root / "Logs" / "Editor.log").write_text(
+        "Assets/Scripts/Old.cs(3,1): error CS0103: The name 'x' does not exist in the current context\n"
+        "Begin MonoManager ReloadAssembly\n"
+        "Assets\\Scripts\\Player.cs(4,22): error CS1002: ; expected\n"
+        "NullReferenceException: Object reference not set to an instance of an object\n"
+        "Player.Update () (at Assets/Scripts/Player.cs:5)\n")
+    up._cache.clear()
+    up._running = lambda: [str(root)]
+    check("finds the open Unity project", up.find("MyGame - World - Windows, Mac, Linux - Unity 6.3") == root)
+    over = up.overview(root)
+    check("knows its scripts and scenes", "Player.cs" in over and "World" in over and str(root.parent) not in over)
+    code = up.open_script(root, "● Player.cs - MyGame - Visual Studio Code")
+    check("reads the script open in the code editor, numbered",
+          "Assets/Scripts/Player.cs" in code and "   4 |     float speed = 5f" in code and "unsaved" in code)
+    check("...not one it can't name", up.open_script(root, "MyGame - Microsoft Visual Studio") == "")
+    errs = up.errors(root)
+    check("reads the newest errors, with the line they point at",
+          "line 4: error CS1002" in errs and "float speed = 5f" in errs and "NullReferenceException" in errs
+          and "line 5" in errs)
+    check("errors from before a successful compile are left out", "Old.cs" not in errs)
+    both = up.notes({"name": "Visual Studio Code", "title": "Player.cs - MyGame - Visual Studio Code"})
+    check("in the code editor: project, errors and the open script", "Scripts (newest" in both
+          and "CS1002" in both and "The script open" in both)
+    up._cache.clear()
+    up._running, up._hub = (lambda: []), (lambda: [])
+    check("no project found: nothing", up.notes({"name": "Unity", "title": "Other - Unity"}) == "")
+
+
 def test_safe_updates():
     import shutil
     import tempfile

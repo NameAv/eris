@@ -423,6 +423,24 @@ def test_eris_unity():
         check("each Stuck asks for a bigger hint, up to 3",
               [a for a in e.brain.asked if "hint level" in a][-2:] == [brain_hint(3)] * 2)
         check("a lesson gets more steps than a quick task", e._scale() == 3)
+        check("each why goes in the notebook under its lesson",
+              course.notebook() == [(first, ["The Scene view is where you build your world."])])
+        e.brain.script = ["NOBOX\nPROJECT Player has PlayerMovement.cs\nSAY Nice.\nDONE"]
+        e.ask("I made the script")
+        wait_for(lambda: not e.busy and course.facts())
+        check("PROJECT lines are kept about their game, and go to the AI",
+              course.facts() == ["Player has PlayerMovement.cs"] and "PlayerMovement.cs" in course.summary())
+        e.brain.script = ["BOX 100 100 200 130\nSAY Type the next line.\nWAIT next"]
+        e.ask("next")
+        wait_for(lambda: e.waiting == "next" and not e.busy)
+        asked = len(e.brain.asked)
+        e.brain.moved = False
+        e.auto_look()
+        wait_for(lambda: not e.busy)
+        time.sleep(0.1)
+        check("a quick check that says they're still working skips the full brain",
+              len(e.brain.asked) == asked and e.waiting == "next")
+        e.brain.moved = True
         course.complete(first)
         check("finishing a lesson moves you on", course.current() == course.LESSONS[1] and course.done() == [first.id])
         from eris import unity_book

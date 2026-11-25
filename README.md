@@ -88,6 +88,18 @@ and never makes it for you. Every script, line of story, quest and level is your
   handbook, she searches Unity's official docs (only docs.unity3d.com, docs.unity.com and
   learn.unity.com) for your version before answering. When she isn't sure, she tells you where to look it up rather
   than guess.
+- **She reads your project** (on your PC only, and she never changes a file): its scripts
+  and scenes, the script open in Visual Studio Code or Rider (she finds it from the window
+  title; Visual Studio doesn't show the file name there, so she reads that one from the
+  screen), and the newest errors in Unity's log. So she can point at the exact line and
+  explain what's wrong with it. You still write the fix.
+- **She remembers your game.** When you finish something that lasts (a script, a scene, a
+  prefab), she notes it, so later lessons build on what you actually made.
+- **Your notebook.** Every "why" she tells you is kept under its lesson. Click the lesson bar
+  to read them. Just notes: nothing to answer.
+- **Cheaper long sessions.** While you work on a step, a quick look from the cheap Haiku brain
+  checks whether you're done; the full Opus brain only comes in when there's something new to
+  teach.
 - **Stuck?** Each press of **Stuck** gives a bigger hint: a nudge, then the exact menu or
   function, then she points at it and explains it fully.
 - **Steam:** Valve's AI disclosure covers AI-made content that ships in your game, not tools
@@ -236,6 +248,7 @@ If it can't connect, Eris switches to the built-in Windows voice by herself. Use
 - `eris/knowledge.py`: a little know-how about popular apps
 - `eris/course.py`: Eris Unity's lessons and your progress through them
 - `eris/unity_book.py`: Eris Unity's handbook of checked Unity 6 facts
+- `eris/unity_project.py`: reads your Unity project (scripts, the open script, log errors)
 - `eris/glitch.py`: the Neon look's drifting, glitching banner
 - `eris/hud.py`: the Neon HUD box shapes, drag connector and notes
 - `eris/overlay.py`: the red box (four solid bars plus the in-box type hint)

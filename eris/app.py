@@ -215,6 +215,8 @@ class App(ctk.CTk):
             self._set_call(args[0])
         elif name == "active":
             self.active_switch.select() if args[0] else self.active_switch.deselect()
+        elif name == "lesson":
+            self.refresh_lesson()
         elif name == "run":
             args[0]()                     # a background job's UI update (e.g. Settings)
 
@@ -363,6 +365,9 @@ class App(ctk.CTk):
         self.lesson_title = ctk.CTkLabel(words, text="", font=font(14, "bold"), text_color=T.TEXT,
                                          anchor="w", height=20)
         self.lesson_title.pack(fill="x")
+        for w in (words, self.lesson_tag, self.lesson_title):    # click the lesson: your notebook
+            w.bind("<Button-1>", lambda _e: self.open_notebook())
+            w.configure(cursor="hand2")
         self.lesson_btns = {}
         for text, fn, primary in (("Done", self._lesson_done, False),
                                   ("Stuck", lambda: self.eris.stuck(), False),
@@ -381,10 +386,36 @@ class App(ctk.CTk):
             self.lesson_title.configure(text="You made a game. Ask me anything.")
         else:
             self.lesson_tag.configure(text=f"LESSON {course.number(lesson)} OF {len(course.LESSONS)}"
-                                           f"  ·  {lesson.part.upper()}")
+                                           f"  ·  {lesson.part.upper()}"
+                                           + ("  ·  NOTES ›" if course.notebook() else ""))
             self.lesson_title.configure(text=lesson.title)
         for name in ("Start", "Done"):
             self.lesson_btns[name].configure(state="normal" if lesson else "disabled")
+
+    def open_notebook(self):
+        """Every "why" she's told you, under its lesson. Just notes: nothing to answer."""
+        if getattr(self, "_notebook", None) and self._notebook.winfo_exists():
+            self._notebook.destroy()
+        win = self._notebook = ctk.CTkToplevel(self, fg_color=T.BG)
+        win.title("Your notebook")
+        win.geometry("460x560")
+        win.after(50, lambda: tint_titlebar(win))
+        page = ctk.CTkScrollableFrame(win, fg_color=T.CARD, corner_radius=T.r(14),
+                                      scrollbar_button_color=T.BORDER)
+        page.pack(fill="both", expand=True, padx=14, pady=14)
+        book = course.notebook()
+        if not book:
+            ctk.CTkLabel(page, text="Nothing yet. The \"why\" behind each step lands here as you go.",
+                         font=font(13), text_color=T.MUTED, wraplength=380, justify="left").pack(
+                anchor="w", padx=10, pady=10)
+        for lesson, notes in book:
+            ctk.CTkLabel(page, text=f"LESSON {course.number(lesson)}  ·  {lesson.title.upper()}",
+                         font=font(11, "bold"), text_color=T.ACCENT, anchor="w").pack(
+                fill="x", padx=10, pady=(12, 4))
+            for why in notes:
+                ctk.CTkLabel(page, text=f"•  {why}", font=font(13), text_color=T.TEXT, anchor="w",
+                             justify="left", wraplength=380).pack(fill="x", padx=10, pady=1)
+        win.after(100, win.focus)
 
     def _lesson_start(self):
         lesson = course.current()

@@ -177,6 +177,12 @@ def unity_mode():
         from PIL import ImageGrab
         ImageGrab.grab((app.winfo_rootx(), app.winfo_rooty(), app.winfo_rootx() + app.winfo_width(),
                         app.winfo_rooty() + app.winfo_height())).save(os.environ["ERIS_SHOT"])
+    course.note(course.LESSONS[0], "Frame with F to find anything fast.")
+    app.refresh_lesson()
+    app.open_notebook()
+    app.update()
+    check("the notebook opens with her notes", app._notebook.winfo_exists() and "NOTES" in app.lesson_tag.cget("text"))
+    app._notebook.destroy()
     app._lesson_done()
     check("Done moves to the next lesson", app.lesson_title.cget("text") == course.LESSONS[1].title)
     course.forget()

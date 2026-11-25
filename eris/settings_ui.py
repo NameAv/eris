@@ -503,7 +503,7 @@ class SettingsWindow(ctk.CTkToplevel):
                     "box exactly onto the thing to click. Uses a little more AI.", "REFINE")
         self.switch(c, "Watch what I do", "She notices when your screen changes and carries on from there.",
                     "WATCH")
-        self.switch(c, "Plan the next step early", "While you do a step she works out the next one, "
+        self.switch(c, "Future sight", "While you do a step she sees the next one coming, "
                     "so its box and words come the moment you click. She still checks it.", "AHEAD")
         self.switch(c, "Box follows what it points at", "Scroll or move the window and the box "
                     "slides along with its button, without asking the AI again. Uses almost nothing.",

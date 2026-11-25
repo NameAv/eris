@@ -417,7 +417,7 @@ class Brain:
                            **no_thinking(), **self._tools())
             text = "".join(b.text for b in reply.content if b.type == "text")
         except Exception as e:
-            self.log("debug", f"planning ahead skipped: {e}")
+            self.log("debug", f"future sight skipped: {e}")
             return None
         plan = {}
         for ev in LineStream().feed(text + "\n"):

@@ -45,12 +45,12 @@ After that, just open **Eris** from the Desktop. No command window.
   basics. Settings, then Eris, shows what she's learned (and can forget it).
 - **She shows the plan.** For longer tasks she lists the steps ahead in the chat, and the line
   under the chat says which step you're on.
-- **She plans the next step early.** While you do a click step she works out the next one, so
+- **Future sight.** While you do a click step she works out the next one, so
   the moment you click, its box and words come straight away (when what it names is on the new
   screen), and its words are already turned into speech so her voice starts at once. Tasks
   you've done before work the same way from their first step. Her normal look still checks
   it and replaces it if it's wrong. Costs one extra
-  quick AI request per click step; Settings, then Guiding, then *Plan the next step early*.
+  quick AI request per click step; Settings, then Guiding, then *Future sight*.
 - **She checks each step.** Right after you click her box she takes a quick free look: if
   nothing changed she puts the box back and asks for another click, and otherwise she knows
   whether a new window opened or the page changed before she looks again.

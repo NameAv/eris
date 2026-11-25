@@ -489,13 +489,13 @@ class Eris:
                 self.ui.log("info", "I'm watching your screen and will notice when you're done "
                                     f"(or press {config.NEXT_KEY.upper()}).")
 
-    # ---------- planning ahead ----------
+    # ---------- future sight: the next step, worked out while you do this one ----------
     def _plan_ahead(self, my, shot):
         plan = self.brain.predict(shot)
         if plan and self.box_gen == my:
             self.ahead = (my, plan)
             self.voice.prepare(plan["say"])      # its words ready to play the moment it shows
-            self.ui.log("debug", f"planned ahead: {plan['say']!r} ({plan['what']!r})")
+            self.ui.log("debug", f"future sight: {plan['say']!r} ({plan['what']!r})")
 
     @staticmethod
     def _named(shot, what):
@@ -531,7 +531,7 @@ class Eris:
         step.track()
         self.watcher.rebase()
         self._set_check(my, shot)
-        self.ui.log("debug", f"planned step shown in {time.time() - t0:.2f}s")
+        self.ui.log("debug", f"future sight: step shown in {time.time() - t0:.2f}s")
         return True
 
     def _step_now(self):

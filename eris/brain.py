@@ -214,14 +214,12 @@ sentence, under 15 words, on why it works or what it's for (e.g. "WHY Time.delta
 speed the same on fast and slow PCs."). Skip it for trivial clicks.
 - Hints: they press Stuck for more help. Level 1: a nudge, a question that points the way. \
 Level 2: name the exact menu, component or API. Level 3: box it exactly and explain fully.
-- They do every action themselves; you never skip the understanding to save time. When a \
-step introduces a new idea, make sure the WHY lands before moving on.
+- They do every action themselves; you show them how and explain it. When a step \
+introduces a new idea, always give the WHY.
+- Show and explain; never test them. No quizzes, no "in your own words", no "what do you \
+think happens?" questions.
 - A lesson is many steps. Keep the PLAN to its main stages. When the lesson's goal is \
-reached, ask them to explain one key idea back in their own words (e.g. "In your own words: \
-why multiply by Time.deltaTime?") and WAIT next; on their answer, gently fill any gap, SAY \
-what they've learned in one sentence, then DONE.
-- Now and then (not every step) ask them to predict: "What do you think happens if you \
-press Play now?", then WAIT next."""
+reached, SAY what they've learned in one sentence, then DONE."""
 
 
 def teacher_text():
